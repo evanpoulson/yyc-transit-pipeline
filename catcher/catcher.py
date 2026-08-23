@@ -30,6 +30,11 @@ def build_key(feed_name: str, ts: datetime) -> str:
         The S3 key string (no leading slash, no bucket).
     """
 
+    date_path = ts.strftime("%Y/%m/%d/%H")
+    epoch = int(ts.timestamp())
+    key = f"raw/{feed_name}/{date_path}/{feed_name}_{epoch}.pb.gz"
+    return key
+
 
 def fetch(url: str) -> bytes:
     """Fetch a single GTFS-RT feed and return its raw bytes.
@@ -60,3 +65,6 @@ def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
     Returns:
         The S3 key the object was written to.
     """
+
+if __name__ == "__main__":
+    print(build_key("vehicle_positions", datetime.now(timezone.utc)))
