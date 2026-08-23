@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Local test data / snapshots (never commit data)
+raw/
+data/
+*.pb
+*.pb.gz
+
+# Secrets and env
+.env
+*.pem
+*.key
+
+# OS / editor cruft
+.DS_Store
+.vscode/
+*.log
+
+# Terraform (for later)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars

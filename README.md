@@ -1,0 +1,35 @@
+# YYC Transit Pipeline
+
+A data pipeline that captures Calgary Transit's real-time GTFS-RT feeds,
+archives every snapshot immutably, and analyzes how the city's arrival
+predictions compare to when buses actually show up.
+
+## Why
+
+Calgary Transit publishes live arrival predictions that riders rely on, but
+nobody publicly measures how accurate they are, where they're worst, or
+whether some routes and areas are served better than others. This project
+captures the raw feed over time and answers that question, while building a
+more accurate arrival-time predictor.
+
+## Architecture (in progress)
+
+- **catcher/** — always-on service polling the GTFS-RT feeds every 30s and
+  writing raw, immutable snapshots to S3.
+- **compaction/** — scheduled job that rolls raw snapshots into partitioned
+  columnar files for analysis.
+- **dbt/** — transformations and data-quality tests. *(planned)*
+- **dashboard/** — accuracy report and live map. *(planned)*
+- **infra/** — Terraform for all AWS resources. *(planned)*
+
+## Data flow
+
+GTFS-RT feeds → catcher → S3 (raw) → compaction → S3 (curated) → analysis
+
+## Status
+
+Early development. Currently building the ingestion catcher.
+
+## Tech
+
+Python, AWS (S3, EC2), DuckDB, dbt, Dagster, Terraform.
