@@ -69,5 +69,20 @@ def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
         The S3 key the object was written to.
     """
 
+    data = gzip.compress(raw)
+    bucket = config.BUCKET
+    key = build_key(feed_name, ts)
+
+    s3_client.put_object(
+        Body=data,
+        Bucket=bucket,
+        Key=key,
+        ContentEncoding="gzip",
+        ContentType="application/octet-stream"
+    )
+
+    return key
+
 if __name__ == "__main__":
-    print(build_key("vehicle_positions", datetime.now(timezone.utc)))
+    data = fetch(config.FEEDS["vehicle_positions"])
+    print(type(data), len(data))
