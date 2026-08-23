@@ -52,6 +52,9 @@ def fetch(url: str) -> bytes:
         requests.RequestException: If the request fails or times out.
     """
 
+    response = requests.get(url, timeout=(5, 10))
+    response.raise_for_status()
+    return response.content
 
 def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
     """Gzip a raw snapshot and upload it to S3 under its computed key.
