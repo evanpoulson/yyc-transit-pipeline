@@ -94,6 +94,15 @@ def poll_once(s3_client) -> None:
         s3_client: An initialized boto3 S3 client, reused across all feeds.
     """
 
+    ts = datetime.now(timezone.utc)
+
+    for feed_name, url in config.FEEDS.items():
+        try:
+            raw = fetch(url)
+            key = store(s3_client, feed_name, raw, ts)
+            logging.info("stored %s", key)
+        except Exception as err:
+            logging.error("failed %s, %s", feed_name, err)
 
 def main() -> None:
     """Run the catcher loop: poll all feeds every config.POLL_SECONDS forever.
