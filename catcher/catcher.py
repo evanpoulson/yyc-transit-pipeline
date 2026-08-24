@@ -56,6 +56,7 @@ def fetch(url: str) -> bytes:
     response.raise_for_status()
     return response.content
 
+
 def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
     """Gzip a raw snapshot and upload it to S3 under its computed key.
 
@@ -78,10 +79,11 @@ def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
         Bucket=bucket,
         Key=key,
         ContentEncoding="gzip",
-        ContentType="application/octet-stream"
+        ContentType="application/octet-stream",
     )
 
     return key
+
 
 def poll_once(s3_client) -> None:
     """Fetch every configured feed once and store each snapshot to S3.
@@ -104,6 +106,7 @@ def poll_once(s3_client) -> None:
         except Exception as err:
             logging.error("failed %s, %s", feed_name, err)
 
+
 def main() -> None:
     """Run the catcher loop: poll all feeds every config.POLL_SECONDS forever.
 
@@ -111,9 +114,20 @@ def main() -> None:
     poll_once on a steady interval that does not drift with fetch/upload time.
     """
 
-if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+
     s3 = boto3.client("s3")
-    ts = datetime.now(timezone.utc)
-    raw = fetch(config.FEEDS["vehicle_positions"])
-    key = store(s3, "vehicle_positions", raw, ts)
-    print("wrote", key)
+
+    while True:
+        start = time.monotonic()
+        poll_once(s3)
+
+        elapsed = time.monotonic() - start
+        time.sleep(max(0, config.POLL_SECONDS - elapsed))
+
+
+if __name__ == "__main__":
+    main()
