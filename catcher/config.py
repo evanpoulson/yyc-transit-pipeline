@@ -7,7 +7,7 @@ Values only. Imported by catcher.py.
 BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
 
 # How often to poll each feed, in seconds.
-POLL_SECONDS = 30
+POLL_SECONDS = 20
 
 # GTFS-RT feeds to capture: short name -> direct .pb download URL.
 # The name becomes part of the S3 key, so keep it short and stable.
