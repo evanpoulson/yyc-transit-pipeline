@@ -83,6 +83,28 @@ def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
 
     return key
 
+def poll_once(s3_client) -> None:
+    """Fetch every configured feed once and store each snapshot to S3.
+
+    Iterates over config.FEEDS, fetching and storing each feed independently.
+    A failure on one feed (network error, bad response) is logged and skipped
+    so the remaining feeds are still captured.
+
+    Args:
+        s3_client: An initialized boto3 S3 client, reused across all feeds.
+    """
+
+
+def main() -> None:
+    """Run the catcher loop: poll all feeds every config.POLL_SECONDS forever.
+
+    Creates the S3 client and configures logging once, then repeatedly calls
+    poll_once on a steady interval that does not drift with fetch/upload time.
+    """
+
 if __name__ == "__main__":
-    data = fetch(config.FEEDS["vehicle_positions"])
-    print(type(data), len(data))
+    s3 = boto3.client("s3")
+    ts = datetime.now(timezone.utc)
+    raw = fetch(config.FEEDS["vehicle_positions"])
+    key = store(s3, "vehicle_positions", raw, ts)
+    print("wrote", key)
