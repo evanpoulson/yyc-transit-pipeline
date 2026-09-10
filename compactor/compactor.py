@@ -1,11 +1,10 @@
 import boto3
+import duckdb
 
 from google.transit import gtfs_realtime_pb2
 from google.protobuf.json_format import MessageToDict
 
 from datetime import datetime, timezone, timedelta
-
-import polars as pl
 
 import config
 

@@ -2,11 +2,10 @@
 Calgary Transit GTFS-RT catcher.
 
 Polls the configured GTFS-realtime feeds on a fixed interval and writes each
-raw snapshot to S3 as immutable, gzipped bytes. Does not parse the feeds;
-parsing happens downstream so the raw layer stays reprocessable.
+raw snapshot to S3 as immutable, uncompressed protobuf bytes. Does not parse
+the feeds; parsing happens downstream so the raw layer stays reprocessable.
 """
 
-import gzip
 import logging
 import time
 from datetime import datetime, timezone
@@ -32,7 +31,7 @@ def build_key(feed_name: str, ts: datetime) -> str:
 
     date_path = ts.strftime("%Y/%m/%d/%H")
     epoch = int(ts.timestamp())
-    key = f"raw/{feed_name}/{date_path}/{feed_name}_{epoch}.pb.gz"
+    key = f"raw/{feed_name}/{date_path}/{feed_name}_{epoch}.pb"
     return key
 
 
@@ -58,7 +57,7 @@ def fetch(url: str) -> bytes:
 
 
 def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
-    """Gzip a raw snapshot and upload it to S3 under its computed key.
+    """Upload a snapshot to S3 under its computed key.
 
     Args:
         s3_client: An initialized boto3 S3 client.
@@ -70,15 +69,13 @@ def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
         The S3 key the object was written to.
     """
 
-    data = gzip.compress(raw)
     bucket = config.BUCKET
     key = build_key(feed_name, ts)
 
     s3_client.put_object(
-        Body=data,
+        Body=raw,
         Bucket=bucket,
         Key=key,
-        ContentEncoding="gzip",
         ContentType="application/octet-stream",
     )
 
