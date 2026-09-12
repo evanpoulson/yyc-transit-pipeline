@@ -27,13 +27,24 @@ for page in page_iterator:
             paths.append(obj['Key'])
 
 # need to get objects from s3
-def get_object(s3_client, bucket: str, key: str):
+def get_object(s3_client, bucket: str, key: str) -> bytes:
 
     response = s3_client.get_object( 
         Bucket=bucket,
         Key=key,
         )
     return response["Body"].read()
+
+def parse_snapshot(snapshot: bytes) -> list:
+
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(snapshot)
+
+    entities = []
+    for entity in feed.entity:
+        entities.append(entity)
+    
+    return entities
 
 results = {}
 with ThreadPoolExecutor(max_workers=30) as executor:
@@ -42,7 +53,10 @@ with ThreadPoolExecutor(max_workers=30) as executor:
     for future in as_completed(futures):
         key = futures[future]
         try:
-            print(future.result())
+            print(parse_snapshot(future.result()))
+            print("\n")
+            print("=" * 100)
+            print("\n")
             #results[key] = data
             #print(f"Downloaded {key} ({len(data)} bytes)")
         except Exception as e:
