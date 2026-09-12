@@ -9,17 +9,14 @@ from concurrent.futures import ThreadPoolExecutor , as_completed
 
 import config
 
-s3 = boto3.client("s3")
-bucket = config.BUCKET
-prefix = f"{config.PREFIXES.get("vehicle_positions")}/{date_path}/"
-
-def get_object_paths(s3_client: boto3.client, bucket: str, prefix: str) -> list:
-
-    paginator = s3.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
+def get_object_paths(s3_client: boto3.client, bucket: str, feed: str) -> list:
 
     target_day = (datetime.now(timezone.utc)) - (timedelta(days=1)) # the previous day from when this script is ran, since it'll be run after the end of a day to compact the target day snapshots
     date_path = target_day.strftime("%Y/%m/%d")
+    prefix = f"{feed.get("vehicle_positions")}/{date_path}/"
+
+    paginator = s3.get_paginator('list_objects_v2')
+    page_iterator = paginator.paginate(Bucket=bucket, prefix=prefix)
 
     paths = []
     for page in page_iterator:
@@ -62,3 +59,13 @@ with ThreadPoolExecutor(max_workers=30) as executor:
             #print(f"Downloaded {key} ({len(data)} bytes)")
         except Exception as e:
             print(f"Failed to download {key}: {e}")
+
+def main() -> None:
+    s3 = boto3.client("s3")
+    bucket = config.BUCKET
+    prefix = f"{config.PREFIXES.get("vehicle_positions")}/{date_path}/"
+
+    object_paths = get_object_paths()
+
+if __name__ == "__main__":
+    main()
