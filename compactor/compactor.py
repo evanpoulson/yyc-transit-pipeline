@@ -13,9 +13,9 @@ def get_object_paths(s3_client: boto3.client, bucket: str, feed: str) -> list:
 
     target_day = (datetime.now(timezone.utc)) - (timedelta(days=1)) # the previous day from when this script is ran, since it'll be run after the end of a day to compact the target day snapshots
     date_path = target_day.strftime("%Y/%m/%d")
-    prefix = f"{feed.get("vehicle_positions")}/{date_path}/"
+    prefix = f"{feed}/{date_path}/"
 
-    paginator = s3.get_paginator('list_objects_v2')
+    paginator = s3_client.get_paginator('list_objects_v2')
     page_iterator = paginator.paginate(Bucket=bucket, prefix=prefix)
 
     paths = []
@@ -47,25 +47,33 @@ def parse_snapshot(snapshot: bytes) -> list:
     
     return entities
 
-results = {}
-with ThreadPoolExecutor(max_workers=30) as executor:
+def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucket: str, paths: list):
 
-    futures = {executor.submit(get_object, s3_client=s3, bucket=config.BUCKET, key=key): key for key in paths}
-    for future in as_completed(futures):
-        key = futures[future]
-        try:
-            print(parse_snapshot(future.result()))
-            #results[key] = data
-            #print(f"Downloaded {key} ({len(data)} bytes)")
-        except Exception as e:
-            print(f"Failed to download {key}: {e}")
+    results = {}
+    with executor:
+
+        futures = {executor.submit(get_object, s3_client=s3_client, bucket=bucket, key=key): key for key in paths}
+        for future in as_completed(futures):
+
+            object_key = futures[future]
+            try:
+                data = parse_snapshot(future.result())
+                results[object_key] = data
+                print(f"Downloaded {object_key} ({len(data)} entities)")
+            except Exception as e:
+                print(f"Failed to download {object_key}: {e}")
+
+    return results
 
 def main() -> None:
     s3 = boto3.client("s3")
     bucket = config.BUCKET
-    prefix = f"{config.PREFIXES.get("vehicle_positions")}/{date_path}/"
+    feed = config.FEEDS.get("vehicle_positions")
+    thread_pool = ThreadPoolExecutor(max_workers=30)
 
-    object_paths = get_object_paths()
+    object_paths = get_object_paths(s3_client=s3, bucket=bucket, feed=feed)
+    vehicle_positions = fetch_snapshots(executor=thread_pool, s3_client=s3, bucket=bucket, paths=object_paths)
+    print(vehicle_positions)
 
 if __name__ == "__main__":
     main()
