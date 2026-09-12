@@ -1,10 +1,11 @@
 import boto3
-import duckdb
 
 from google.transit import gtfs_realtime_pb2
 from google.protobuf.json_format import MessageToDict
 
 from datetime import datetime, timezone, timedelta
+
+from concurrent.futures import ThreadPoolExecutor , as_completed
 
 import config
 
@@ -25,6 +26,14 @@ for page in page_iterator:
         for obj in page['Contents']:
             paths.append(obj['Key'])
 
+# need to get objects from s3
+def get_object(s3_client, bucket: str, key: str):
+    response = s3_client.get_object( 
+        Bucket=bucket,
+        Key=key,
+        )
+    return response["Body"].read()
+
 """
 entities = []
 for path in paths:
@@ -33,9 +42,10 @@ for path in paths:
         feed.ParseFromString(snapshot.read())
 
         for entity in feed.entity:
-            entities.append(MessageToDict(entity))"""
+            print(entity)
+            entities.append(MessageToDict(entity))
 
-"""
+
 df = pl.DataFrame(entities)
 df = df.unnest("vehicle")
 print(df)  
