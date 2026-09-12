@@ -28,11 +28,27 @@ for page in page_iterator:
 
 # need to get objects from s3
 def get_object(s3_client, bucket: str, key: str):
+
     response = s3_client.get_object( 
         Bucket=bucket,
         Key=key,
         )
     return response["Body"].read()
+
+results = {}
+with ThreadPoolExecutor(max_workers=30) as executor:
+
+    futures = {executor.submit(get_object, s3_client=s3, bucket=config.BUCKET, key=key): key for key in paths}
+    for future in as_completed(futures):
+        key = futures[future]
+        try:
+            print(future.result())
+            #results[key] = data
+            #print(f"Downloaded {key} ({len(data)} bytes)")
+        except Exception as e:
+            print(f"Failed to download {key}: {e}")
+
+#print(results)
 
 """
 entities = []
