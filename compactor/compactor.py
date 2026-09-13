@@ -53,7 +53,7 @@ def parse_snapshot(snapshot: bytes) -> list:
 
 def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucket: str, paths: list):
 
-    results = {}
+    snapshots = []
     with executor:
 
         futures = {executor.submit(get_object, s3_client=s3_client, bucket=bucket, key=key): key for key in paths}
@@ -62,12 +62,12 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
             object_key = futures[future]
             try:
                 data = parse_snapshot(future.result())
-                results[object_key] = data
+                snapshots.append(data)
                 #print(f"Downloaded {object_key} ({len(data)} entities)")
             except Exception as e:
                 print(f"Failed to download {object_key}: {e}")
 
-    return results
+    return snapshots
 
 def main() -> None:
     s3 = boto3.client("s3")
