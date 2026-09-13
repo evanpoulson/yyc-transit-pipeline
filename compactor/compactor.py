@@ -114,7 +114,39 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
 
 def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], feed: str, target_day: datetime) -> None:
 
-    df = pa.Table.from_pylist(rows) 
+    VEHICLE_POSITIONS_SCHEMA = pa.schema([
+    ("entity_id", pa.string()),
+    ("trip_id", pa.string()),
+    ("route_id", pa.string()),
+    ("direction_id", pa.int64()),
+    ("start_time", pa.string()),
+    ("start_date", pa.string()),
+    ("schedule_relationship", pa.int64()),
+    ("vehicle_id", pa.string()),
+    ("vehicle_label", pa.string()),
+    ("license_plate", pa.string()),
+    ("latitude", pa.float64()),
+    ("longitude", pa.float64()),
+    ("bearing", pa.float64()),
+    ("odometer", pa.float64()),
+    ("speed", pa.float64()),
+    ("current_stop_sequence", pa.int64()),
+    ("stop_id", pa.string()),          # note: string, see below
+    ("current_status", pa.int64()),
+    ("timestamp", pa.int64()),
+    ("congestion_level", pa.int64()),
+    ("occupancy_status", pa.int64()),
+    ("occupancy_percentage", pa.int64()),
+    ("multi_carriage_details", pa.list_(pa.struct([
+        ("id", pa.string()),
+        ("label", pa.string()),
+        ("occupancy_status", pa.int64()),
+        ("occupancy_percentage", pa.int64()),
+        ("carriage_sequence", pa.int64()),
+        ]))),
+    ])
+
+    df = pa.Table.from_pylist(rows, schema=VEHICLE_POSITIONS_SCHEMA) 
     key = build_prefix(layer="curated", feed=feed, target_day=target_day)
     write_path = f"s3://{bucket}/{key}" #"curated/{feed}/date={day}/data.parquet"
 
@@ -151,7 +183,7 @@ def main() -> None:
             paths = get_object_paths(s3_client=s3, bucket=bucket, feed=feed, target_day=target_day)
             vehicle_positions = fetch_snapshots(executor=pool, s3_client=s3, bucket=bucket, paths=paths)
 
-        write_curated(db=con, bucket=bucket, rows=vehicle_positions, feed=feed)
+        write_curated(db=con, bucket=bucket, rows=vehicle_positions, feed=feed, target_day=target_day)
 
 if __name__ == "__main__":
     main()
