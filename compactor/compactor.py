@@ -16,7 +16,7 @@ def get_object_paths(s3_client: boto3.client, bucket: str, feed: str) -> list:
     prefix = f"{feed}/{date_path}/"
 
     paginator = s3_client.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=bucket, prefix=prefix)
+    page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
     paths = []
     for page in page_iterator:
@@ -59,7 +59,7 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
             try:
                 data = parse_snapshot(future.result())
                 results[object_key] = data
-                print(f"Downloaded {object_key} ({len(data)} entities)")
+                #print(f"Downloaded {object_key} ({len(data)} entities)")
             except Exception as e:
                 print(f"Failed to download {object_key}: {e}")
 
@@ -73,7 +73,6 @@ def main() -> None:
 
     object_paths = get_object_paths(s3_client=s3, bucket=bucket, feed=feed)
     vehicle_positions = fetch_snapshots(executor=thread_pool, s3_client=s3, bucket=bucket, paths=object_paths)
-    print(vehicle_positions)
 
 if __name__ == "__main__":
     main()
