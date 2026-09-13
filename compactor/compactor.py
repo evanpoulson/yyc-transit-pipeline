@@ -3,15 +3,14 @@ from datetime import datetime, timezone, timedelta
 
 import boto3
 import duckdb
-import polars as pl
+import pyarrow as pa
 from google.transit import gtfs_realtime_pb2
 from google.protobuf.json_format import MessageToDict
 
 import config
 
-def get_object_paths(s3_client: boto3.client, bucket: str, feed: str) -> list[str]:
+def get_object_paths(s3_client: boto3.client, bucket: str, feed: str, target_day: datetime) -> list[str]:
 
-    target_day = (datetime.now(timezone.utc)) - (timedelta(days=1)) # the previous day from when this script is ran, since it'll be run after the end of a day to compact the target day snapshots
     date_path = target_day.strftime("%Y/%m/%d")
     prefix = f"raw/{feed}/{date_path}/"
 
@@ -71,42 +70,45 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
 
 def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], feed: str) -> None:
 
-    df = pl.DataFrame(rows)
+    df = pa.Table.from_pylist(rows) 
 
-    target_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    target_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y/%m/%d")
     write_path = f"s3://{bucket}/curated/{feed}/date={target_day}/data.parquet"
 
-    db.register("rows", df)
     db.execute(
-    "COPY (SELECT DISTINCT * FROM rows) TO ? (FORMAT parquet)",
+    "COPY (SELECT DISTINCT * FROM df) TO ? (FORMAT parquet)",
     [write_path],
     )
-    db.unregister("rows")
 
 def main() -> None:
 
     feed = config.FEEDS.get("vehicle_positions)")
     bucket = config.BUCKET
-    target_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    target_day = (datetime.now(timezone.utc) - timedelta(days=1))
 
     s3 = boto3.client("s3")
 
     with duckdb.connect() as con:
         con.sql("INSTALL httpfs")
         con.sql("LOAD httpfs")
-        con.sql("""
+        session = boto3.Session()                                  # picks up AWS_PROFILE / SSO
+        creds = session.get_credentials().get_frozen_credentials()
+
+        con.execute(f"""
             CREATE SECRET (
                 TYPE s3,
-                PROVIDER credential_chain,
+                KEY_ID '{creds.access_key}',
+                SECRET '{creds.secret_key}',
+                SESSION_TOKEN '{creds.token}',
                 REGION 'ca-central-1'
             )
         """)
 
         with ThreadPoolExecutor(max_workers=30) as pool:
-            paths = get_object_paths(s3, bucket, feed, target_day)
-            vehicle_positions = fetch_snapshots(pool, s3, bucket, paths)
+            paths = get_object_paths(s3_client=s3, bucket=bucket, feed=feed, target_day=target_day)
+            vehicle_positions = fetch_snapshots(executor=pool, s3_client=s3, bucket=bucket, paths=paths)
 
-        write_curated(db=con, bucket=bucket, rows=vehicle_positions, feed=feed, target_day=target_day)
+        write_curated(db=con, bucket=bucket, rows=vehicle_positions, feed=feed)
 
 
 if __name__ == "__main__":
