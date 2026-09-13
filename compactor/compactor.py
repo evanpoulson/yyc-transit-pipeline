@@ -42,15 +42,49 @@ def parse_snapshot(snapshot: bytes) -> list[dict]:
 
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(snapshot)
+    return [shape_entity(entity) for entity in feed.entity]
 
-    return [
-        MessageToDict(
-            entity,
-            preserving_proto_field_name=True,
-            always_print_fields_with_no_presence=True,
-        )
-        for entity in feed.entity
-    ]
+def shape_entity(entity: gtfs_realtime_pb2.FeedEntity) -> dict:
+    
+    v = entity.vehicle
+    t = v.trip
+    d = v.vehicle
+    p = v.position
+
+    return {
+        "entity_id":             entity.id or None,
+        "trip_id":               t.trip_id if v.HasField("trip") else None,
+        "route_id":              t.route_id if v.HasField("trip") else None,
+        "direction_id":          t.direction_id if v.HasField("trip") else None,
+        "start_time":            t.start_time if v.HasField("trip") else None,
+        "start_date":            t.start_date if v.HasField("trip") else None,
+        "schedule_relationship": t.schedule_relationship if v.HasField("trip") else None,
+        "vehicle_id":            d.id if v.HasField("vehicle") else None,
+        "vehicle_label":         d.label if v.HasField("vehicle") else None,
+        "license_plate":         d.license_plate if v.HasField("vehicle") else None,
+        "latitude":              p.latitude if v.HasField("position") else None,
+        "longitude":             p.longitude if v.HasField("position") else None,
+        "bearing":               p.bearing if v.HasField("position") else None,
+        "odometer":              p.odometer if v.HasField("position") else None,
+        "speed":                 p.speed if v.HasField("position") else None,
+        "current_stop_sequence": v.current_stop_sequence if v.HasField("current_stop_sequence") else None,
+        "stop_id":               v.stop_id if v.HasField("stop_id") else None,
+        "current_status":        v.current_status,
+        "timestamp":             v.timestamp if v.HasField("timestamp") else None,
+        "congestion_level":      v.congestion_level,
+        "occupancy_status":      v.occupancy_status if v.HasField("occupancy_status") else None,
+        "occupancy_percentage":  v.occupancy_percentage if v.HasField("occupancy_percentage") else None,
+        "multi_carriage_details": [
+            {
+                "id": c.id or None,
+                "label": c.label or None,
+                "occupancy_status": c.occupancy_status,
+                "occupancy_percentage": c.occupancy_percentage if c.HasField("occupancy_percentage") else None,
+                "carriage_sequence": c.carriage_sequence if c.HasField("carriage_sequence") else None,
+            }
+            for c in v.multi_carriage_details
+        ],
+    }
 
 def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucket: str, paths: list[str]):
 
