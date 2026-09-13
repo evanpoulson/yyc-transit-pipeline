@@ -57,7 +57,7 @@ def get_object_paths(s3_client: boto3.client, bucket: str, feed: str, target_day
             for obj in page['Contents']:
                 paths.append(obj['Key'])
 
-    return group_by_hour(paths)
+    return paths
 
 def get_object(s3_client: boto3.client, bucket: str, key: str) -> bytes:
 
@@ -131,10 +131,23 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
 
     return snapshots
 
-def create_table(rows: list[dict], schema: pa.schema) -> pa.Table:
-    return pa.Table.from_pylist(rows, schema=schema)
+def create_table(s3_client: boto3.client, pool: ThreadPoolExecutor, bucket: str, feed: str, target_day: datetime, schema: pa.Schema) -> pa.Table:
 
-def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, df: pa.Table, feed: str, target_day: datetime) -> None:
+    tables = []
+
+    paths = get_object_paths(s3_client=s3_client, bucket=bucket, feed=feed, target_day=target_day)
+    paths_by_hour = group_by_hour(paths)
+
+    for hour, keys in sorted(paths_by_hour.items()):
+
+        rows = fetch_snapshots(executor=pool, s3_client=s3_client, bucket=bucket, paths=keys)
+        tables.append(pa.Table.from_pylist(rows, schema=schema))
+
+    table = pa.concat_tables(tables)
+
+    return table
+
+def write_curated(db: duckdb.DuckDBPyConnection, df: pa.Table, bucket: str, feed: str, target_day: datetime) -> None:
 
     key = build_prefix(layer="curated", feed=feed, target_day=target_day)
     write_path = f"s3://{bucket}/{key}" #"curated/{feed}/date={day}/data.parquet"
@@ -204,10 +217,9 @@ def main() -> None:
         """)
   
         with ThreadPoolExecutor(max_workers=40) as pool:
-            paths = get_object_paths(s3_client=s3, bucket=bucket, feed=feed, target_day=target_day)
-            vehicle_positions = fetch_snapshots(executor=pool, s3_client=s3, bucket=bucket, paths=paths)
+            df = create_table(s3_client=s3, pool=pool, bucket=bucket, feed=feed, target_day=target_day, schema=VEHICLE_POSITIONS_SCHEMA)
 
-        write_curated(db=con, bucket=bucket, rows=vehicle_positions, feed=feed, target_day=target_day)
+        write_curated(db=con, df=df, feed=feed, target_day=target_day)
 
 if __name__ == "__main__":
     main()
