@@ -9,7 +9,9 @@ from google.protobuf.json_format import MessageToDict
 
 import config
 
-import pandas as pd
+def resolve_target_day() -> datetime:
+
+    return datetime.now(timezone.utc) - timedelta(days=1)
 
 def get_object_paths(s3_client: boto3.client, bucket: str, feed: str, target_day: datetime) -> list[str]:
 
@@ -45,7 +47,7 @@ def parse_snapshot(snapshot: bytes) -> list[dict]:
     return [shape_entity(entity) for entity in feed.entity]
 
 def shape_entity(entity: gtfs_realtime_pb2.FeedEntity) -> dict:
-    
+
     v = entity.vehicle
     t = v.trip
     d = v.vehicle
@@ -104,12 +106,7 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
 
 def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], feed: str) -> None:
 
-    #pd.set_option("display.max_columns", None)     # show every column, no ... in the middle
-    #pd.set_option("display.width", None)           # don't wrap to terminal width
-    #pd.set_option("display.max_colwidth", None)   
-
     df = pa.Table.from_pylist(rows) 
-    #print(df.slice(0, 10).to_pandas())
 
     """
     target_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y/%m/%d")
@@ -124,7 +121,7 @@ def main() -> None:
 
     feed = config.FEEDS.get("vehicle_positions")
     bucket = config.BUCKET
-    target_day = (datetime.now(timezone.utc) - timedelta(days=1))
+    target_day = resolve_target_day()
 
     s3 = boto3.client("s3")
 
