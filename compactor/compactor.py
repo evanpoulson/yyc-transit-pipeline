@@ -1,19 +1,19 @@
-import boto3
+from concurrent.futures import ThreadPoolExecutor , as_completed
+from datetime import datetime, timezone, timedelta
 
+import boto3
+import duckdb
+import polars as pl
 from google.transit import gtfs_realtime_pb2
 from google.protobuf.json_format import MessageToDict
 
-from datetime import datetime, timezone, timedelta
-
-from concurrent.futures import ThreadPoolExecutor , as_completed
-
 import config
 
-def get_object_paths(s3_client: boto3.client, bucket: str, feed: str) -> list:
+def get_object_paths(s3_client: boto3.client, bucket: str, feed: str) -> list[str]:
 
     target_day = (datetime.now(timezone.utc)) - (timedelta(days=1)) # the previous day from when this script is ran, since it'll be run after the end of a day to compact the target day snapshots
     date_path = target_day.strftime("%Y/%m/%d")
-    prefix = f"{feed}/{date_path}/"
+    prefix = f"raw/{feed}/{date_path}/"
 
     paginator = s3_client.get_paginator('list_objects_v2')
     page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
@@ -37,7 +37,7 @@ def get_object(s3_client: boto3.client, bucket: str, key: str) -> bytes:
         )
     return response["Body"].read()
 
-def parse_snapshot(snapshot: bytes) -> list:
+def parse_snapshot(snapshot: bytes) -> list[dict]:
 
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(snapshot)
@@ -51,7 +51,7 @@ def parse_snapshot(snapshot: bytes) -> list:
         for entity in feed.entity
     ]
 
-def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucket: str, paths: list):
+def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucket: str, paths: list[str]):
 
     snapshots = []
     with executor:
@@ -69,14 +69,45 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
 
     return snapshots
 
-def main() -> None:
-    s3 = boto3.client("s3")
-    bucket = config.BUCKET
-    feed = config.FEEDS.get("vehicle_positions")
-    thread_pool = ThreadPoolExecutor(max_workers=30)
+def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], feed: str) -> None:
 
-    object_paths = get_object_paths(s3_client=s3, bucket=bucket, feed=feed)
-    vehicle_positions = fetch_snapshots(executor=thread_pool, s3_client=s3, bucket=bucket, paths=object_paths)
+    df = pl.DataFrame(rows)
+
+    target_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    write_path = f"s3://{bucket}/curated/{feed}/date={target_day}/data.parquet"
+
+    db.register("rows", df)
+    db.execute(
+    "COPY (SELECT DISTINCT * FROM rows) TO ? (FORMAT parquet)",
+    [write_path],
+    )
+    db.unregister("rows")
+
+def main() -> None:
+
+    feed = config.FEEDS.get("vehicle_positions)")
+    bucket = config.BUCKET
+    target_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    s3 = boto3.client("s3")
+
+    with duckdb.connect() as con:
+        con.sql("INSTALL httpfs")
+        con.sql("LOAD httpfs")
+        con.sql("""
+            CREATE SECRET (
+                TYPE s3,
+                PROVIDER credential_chain,
+                REGION 'ca-central-1'
+            )
+        """)
+
+        with ThreadPoolExecutor(max_workers=30) as pool:
+            paths = get_object_paths(s3, bucket, feed, target_day)
+            vehicle_positions = fetch_snapshots(pool, s3, bucket, paths)
+
+        write_curated(db=con, bucket=bucket, rows=vehicle_positions, feed=feed, target_day=target_day)
+
 
 if __name__ == "__main__":
     main()
