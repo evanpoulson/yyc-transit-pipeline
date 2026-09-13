@@ -1,5 +1,5 @@
-from compactor.base_compactor import Compactor
-from compactor.schemas import VEHICLE_POSITIONS_SCHEMA
+from base_compactor import Compactor
+from schemas import VEHICLE_POSITIONS_SCHEMA
 
 class VehiclePositionsCompactor(Compactor):
 
