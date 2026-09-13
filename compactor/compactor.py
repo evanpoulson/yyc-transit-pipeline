@@ -13,10 +13,18 @@ def resolve_target_day() -> datetime:
 
     return datetime.now(timezone.utc) - timedelta(days=1)
 
+def build_prefix(layer: str, feed: str, target_day: datetime) -> str:
+
+    if layer == "raw":
+        date_path = target_day.strftime("%Y/%m/%d")
+        return f"raw/{feed}/{date_path}/"
+    else:
+        day = target_day.strftime("%Y-%m-%d")
+        return f"curated/{feed}/date={day}/data.parquet"
+
 def get_object_paths(s3_client: boto3.client, bucket: str, feed: str, target_day: datetime) -> list[str]:
 
-    date_path = target_day.strftime("%Y/%m/%d")
-    prefix = f"raw/{feed}/{date_path}/"
+    prefix = build_prefix(layer="raw", feed=feed, target_day=target_day)
 
     paginator = s3_client.get_paginator('list_objects_v2')
     page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
@@ -104,18 +112,16 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
 
     return snapshots
 
-def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], feed: str) -> None:
+def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], feed: str, target_day: datetime) -> None:
 
     df = pa.Table.from_pylist(rows) 
-
-    """
-    target_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y/%m/%d")
-    write_path = f"s3://{bucket}/curated/{feed}/date={target_day}/data.parquet"
+    key = build_prefix(layer="curated", feed=feed, target_day=target_day)
+    write_path = f"s3://{bucket}/{key}" #"curated/{feed}/date={day}/data.parquet"
 
     db.execute(
     "COPY (SELECT DISTINCT * FROM df) TO ? (FORMAT parquet)",
     [write_path],
-    )"""
+    )
 
 def main() -> None:
 
