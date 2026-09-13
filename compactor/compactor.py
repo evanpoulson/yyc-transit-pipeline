@@ -20,6 +20,7 @@ def get_object_paths(s3_client: boto3.client, bucket: str, feed: str) -> list:
 
     paths = []
     for page in page_iterator:
+
         # 'Contents' won't exist if the prefix or folder is completely empty
         if 'Contents' in page:
             for obj in page['Contents']:
@@ -41,11 +42,14 @@ def parse_snapshot(snapshot: bytes) -> list:
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(snapshot)
 
-    entities = []
-    for entity in feed.entity:
-        entities.append(entity)
-    
-    return entities
+    return [
+        MessageToDict(
+            entity,
+            preserving_proto_field_name=True,
+            always_print_fields_with_no_presence=True,
+        )
+        for entity in feed.entity
+    ]
 
 def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucket: str, paths: list):
 
