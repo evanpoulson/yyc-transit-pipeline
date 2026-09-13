@@ -1,31 +1,49 @@
-        VEHICLE_POSITIONS_SCHEMA = pa.schema([
-        ("entity_id", pa.string()),
-        ("trip_id", pa.string()),
-        ("route_id", pa.string()),
-        ("direction_id", pa.int64()),
-        ("start_time", pa.string()),
-        ("start_date", pa.string()),
-        ("schedule_relationship", pa.int64()),
-        ("vehicle_id", pa.string()),
-        ("vehicle_label", pa.string()),
-        ("license_plate", pa.string()),
-        ("latitude", pa.float64()),
-        ("longitude", pa.float64()),
-        ("bearing", pa.float64()),
-        ("odometer", pa.float64()),
-        ("speed", pa.float64()),
-        ("current_stop_sequence", pa.int64()),
-        ("stop_id", pa.string()),          # note: string, see below
-        ("current_status", pa.int64()),
-        ("timestamp", pa.int64()),
-        ("congestion_level", pa.int64()),
-        ("occupancy_status", pa.int64()),
-        ("occupancy_percentage", pa.int64()),
-        ("multi_carriage_details", pa.list_(pa.struct([
-            ("id", pa.string()),
-            ("label", pa.string()),
-            ("occupancy_status", pa.int64()),
-            ("occupancy_percentage", pa.int64()),
-            ("carriage_sequence", pa.int64()),
-            ]))),
-        ])
+from compactor.base_compactor import Compactor
+from compactor.schemas import VEHICLE_POSITIONS_SCHEMA
+
+class VehiclePositionsCompactor(Compactor):
+
+    feed_name = "vehicle_positions"
+    schema = VEHICLE_POSITIONS_SCHEMA
+    sort_keys = ("entity_id", "timestamp")
+
+    def shape_entity(self, entity) -> list[dict]:
+        v = entity.vehicle
+        t = v.trip
+        d = v.vehicle
+        p = v.position
+
+        return [{
+            "entity_id":             entity.id or None,
+            "trip_id":               t.trip_id if v.HasField("trip") else None,
+            "route_id":              t.route_id if v.HasField("trip") else None,
+            "direction_id":          t.direction_id if v.HasField("trip") else None,
+            "start_time":            t.start_time if v.HasField("trip") else None,
+            "start_date":            t.start_date if v.HasField("trip") else None,
+            "schedule_relationship": t.schedule_relationship if v.HasField("trip") else None,
+            "vehicle_id":            d.id if v.HasField("vehicle") else None,
+            "vehicle_label":         d.label if v.HasField("vehicle") else None,
+            "license_plate":         d.license_plate if v.HasField("vehicle") else None,
+            "latitude":              p.latitude if v.HasField("position") else None,
+            "longitude":             p.longitude if v.HasField("position") else None,
+            "bearing":               p.bearing if v.HasField("position") else None,
+            "odometer":              p.odometer if v.HasField("position") else None,
+            "speed":                 p.speed if v.HasField("position") else None,
+            "current_stop_sequence": v.current_stop_sequence if v.HasField("current_stop_sequence") else None,
+            "stop_id":               v.stop_id if v.HasField("stop_id") else None,
+            "current_status":        v.current_status,
+            "timestamp":             v.timestamp if v.HasField("timestamp") else None,
+            "congestion_level":      v.congestion_level,
+            "occupancy_status":      v.occupancy_status if v.HasField("occupancy_status") else None,
+            "occupancy_percentage":  v.occupancy_percentage if v.HasField("occupancy_percentage") else None,
+            "multi_carriage_details": [
+                {
+                    "id": c.id or None,
+                    "label": c.label or None,
+                    "occupancy_status": c.occupancy_status,
+                    "occupancy_percentage": c.occupancy_percentage if c.HasField("occupancy_percentage") else None,
+                    "carriage_sequence": c.carriage_sequence if c.HasField("carriage_sequence") else None,
+                }
+                for c in v.multi_carriage_details
+            ],
+        }]
