@@ -205,18 +205,7 @@ def main() -> None:
     with duckdb.connect() as con:
         con.sql("INSTALL httpfs")
         con.sql("LOAD httpfs")
-        session = boto3.Session()                                  # picks up AWS_PROFILE / SSO
-        creds = session.get_credentials().get_frozen_credentials()
-
-        con.execute(f"""
-            CREATE SECRET (
-                TYPE s3,
-                KEY_ID '{creds.access_key}',
-                SECRET '{creds.secret_key}',
-                SESSION_TOKEN '{creds.token}',
-                REGION 'ca-central-1'
-            )
-        """)
+        con.execute("CREATE SECRET (TYPE s3, PROVIDER credential_chain, REGION 'ca-central-1'")
   
         with ThreadPoolExecutor(max_workers=40) as pool:
             df = create_table(s3_client=s3, pool=pool, bucket=bucket, feed=feed, target_day=target_day, schema=VEHICLE_POSITIONS_SCHEMA)
