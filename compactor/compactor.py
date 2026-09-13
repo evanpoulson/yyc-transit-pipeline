@@ -7,7 +7,6 @@ import boto3
 import duckdb
 import pyarrow as pa
 from google.transit import gtfs_realtime_pb2
-from google.protobuf.json_format import MessageToDict
 
 import config
 
@@ -143,6 +142,9 @@ def create_table(s3_client: boto3.client, pool: ThreadPoolExecutor, bucket: str,
         rows = fetch_snapshots(executor=pool, s3_client=s3_client, bucket=bucket, paths=keys)
         tables.append(pa.Table.from_pylist(rows, schema=schema))
 
+    if not tables:
+        raise RuntimeError(f"no raw snapshots found for {feed} on {target_day:%Y-%m-%d}")
+
     table = pa.concat_tables(tables)
 
     return table
@@ -219,7 +221,7 @@ def main() -> None:
         with ThreadPoolExecutor(max_workers=40) as pool:
             df = create_table(s3_client=s3, pool=pool, bucket=bucket, feed=feed, target_day=target_day, schema=VEHICLE_POSITIONS_SCHEMA)
 
-        write_curated(db=con, df=df, feed=feed, target_day=target_day)
+        write_curated(db=con, df=df, bucket=bucket, feed=feed, target_day=target_day)
 
 if __name__ == "__main__":
     main()
