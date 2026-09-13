@@ -15,7 +15,7 @@ REGION = "ca-central-1"
 def parse_day(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
-def resolve_target_day(self, day: datetime | None = None) -> datetime:
+def resolve_target_day(day: datetime | None = None) -> datetime:
     return day or datetime.now(timezone.utc) - timedelta(days=1)
 
 def parse_args() -> argparse.Namespace:
