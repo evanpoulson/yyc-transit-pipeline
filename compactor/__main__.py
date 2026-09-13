@@ -1,11 +1,16 @@
 import argparse
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 
 import boto3
 import duckdb
+from botocore.config import Config
 
-import config
+from sub_compactors.vehicle_positions import VehiclePositionsCompactor
+
+BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
+REGION = "ca-central-1"
 
 def parse_day(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -38,7 +43,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 def main():
-    pass
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
+    )
+
+    day = datetime(2026, 9, 12, tzinfo=timezone.utc)
+
+    session = boto3.Session()
+    s3 = boto3.client("s3", region_name=REGION, config=Config(max_pool_connections=32))
+
+    creds = session.get_credentials().get_frozen_credentials()
+
+    with duckdb.connect() as db, ThreadPoolExecutor(max_workers=32) as executor:
+        db.execute("INSTALL httpfs")
+        db.execute("LOAD httpfs")
+        db.execute("SET threads TO 4")
+
+        token_line = f"SESSION_TOKEN '{creds.token}'," if creds.token else ""
+        db.execute(f"""
+            CREATE OR REPLACE SECRET s3_secret (
+                TYPE s3,
+                KEY_ID '{creds.access_key}',
+                SECRET '{creds.secret_key}',
+                {token_line}
+                REGION '{REGION}'
+            )
+        """)
+
+        test = VehiclePositionsCompactor(s3, BUCKET, executor, db)
+        test.run(day)
+
 
 if __name__ == "__main__":
     main()
