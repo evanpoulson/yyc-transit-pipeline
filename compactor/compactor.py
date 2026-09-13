@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor , as_completed
 from datetime import datetime, timezone, timedelta
+import argparse
 
 import boto3
 import duckdb
@@ -9,9 +10,21 @@ from google.protobuf.json_format import MessageToDict
 
 import config
 
-def resolve_target_day() -> datetime:
+def parse_day(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
-    return datetime.now(timezone.utc) - timedelta(days=1)
+def resolve_target_day(day: datetime | None = None) -> datetime:
+    return day or datetime.now(timezone.utc) - timedelta(days=1)
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Compact raw GTFS-RT snapshots into curated Parquet.")
+    parser.add_argument(
+        "--day",
+        type=parse_day,
+        default=None,
+        help="UTC date to compact, YYYY-MM-DD. Defaults to yesterday.",
+    )
+    return parser.parse_args()
 
 def build_prefix(layer: str, feed: str, target_day: datetime) -> str:
 
@@ -159,9 +172,10 @@ def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], 
 
 def main() -> None:
 
+    args = parse_args()
+    target_day = resolve_target_day(args.day)
     feed = config.FEEDS.get("vehicle_positions")
     bucket = config.BUCKET
-    target_day = resolve_target_day()
 
     s3 = boto3.client("s3")
 
