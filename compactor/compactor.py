@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor , as_completed
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 import argparse
 
 import boto3
@@ -52,7 +53,6 @@ def get_object_paths(s3_client: boto3.client, bucket: str, feed: str, target_day
 
     return paths
 
-# need to get objects from s3
 def get_object(s3_client: boto3.client, bucket: str, key: str) -> bytes:
 
     response = s3_client.get_object( 
@@ -125,8 +125,28 @@ def fetch_snapshots(executor: ThreadPoolExecutor, s3_client: boto3.client, bucke
 
     return snapshots
 
-def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], feed: str, target_day: datetime) -> None:
+def create_table(rows: list[dict], schema: pa.schema) -> pa.Table:
+    return pa.Table.from_pylist(rows, schema=schema)
 
+def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, df: pa.Table, feed: str, target_day: datetime) -> None:
+
+    key = build_prefix(layer="curated", feed=feed, target_day=target_day)
+    write_path = f"s3://{bucket}/{key}" #"curated/{feed}/date={day}/data.parquet"
+
+    db.execute("""
+        COPY (
+            SELECT DISTINCT * FROM df
+            ORDER BY entity_id, timestamp
+        ) TO ? (FORMAT parquet)
+    """, [write_path])
+
+def main() -> None:
+
+    args = parse_args()
+    target_day = resolve_target_day(args.day)
+    feed = config.FEEDS.get("vehicle_positions")
+    bucket = config.BUCKET
+    
     VEHICLE_POSITIONS_SCHEMA = pa.schema([
     ("entity_id", pa.string()),
     ("trip_id", pa.string()),
@@ -158,24 +178,6 @@ def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], 
         ("carriage_sequence", pa.int64()),
         ]))),
     ])
-
-    df = pa.Table.from_pylist(rows, schema=VEHICLE_POSITIONS_SCHEMA) 
-    key = build_prefix(layer="curated", feed=feed, target_day=target_day)
-    write_path = f"s3://{bucket}/{key}" #"curated/{feed}/date={day}/data.parquet"
-
-    db.execute("""
-        COPY (
-            SELECT DISTINCT * FROM df
-            ORDER BY entity_id, timestamp
-        ) TO ? (FORMAT parquet)
-    """, [write_path])
-
-def main() -> None:
-
-    args = parse_args()
-    target_day = resolve_target_day(args.day)
-    feed = config.FEEDS.get("vehicle_positions")
-    bucket = config.BUCKET
 
     s3 = boto3.client("s3")
 
