@@ -36,6 +36,12 @@ def build_prefix(layer: str, feed: str, target_day: datetime) -> str:
         day = target_day.strftime("%Y-%m-%d")
         return f"curated/{feed}/date={day}/data.parquet"
 
+def group_by_hour(paths: list[str]) -> dict[str, list[str]]:
+    hours = defaultdict(list)
+    for key in paths:
+        hours[key.rsplit("/", 1)[0]].append(key)
+    return hours
+
 def get_object_paths(s3_client: boto3.client, bucket: str, feed: str, target_day: datetime) -> list[str]:
 
     prefix = build_prefix(layer="raw", feed=feed, target_day=target_day)
@@ -51,7 +57,7 @@ def get_object_paths(s3_client: boto3.client, bucket: str, feed: str, target_day
             for obj in page['Contents']:
                 paths.append(obj['Key'])
 
-    return paths
+    return group_by_hour(paths)
 
 def get_object(s3_client: boto3.client, bucket: str, key: str) -> bytes:
 
@@ -146,7 +152,7 @@ def main() -> None:
     target_day = resolve_target_day(args.day)
     feed = config.FEEDS.get("vehicle_positions")
     bucket = config.BUCKET
-    
+
     VEHICLE_POSITIONS_SCHEMA = pa.schema([
     ("entity_id", pa.string()),
     ("trip_id", pa.string()),
