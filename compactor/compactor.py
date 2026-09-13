@@ -150,10 +150,12 @@ def write_curated(db: duckdb.DuckDBPyConnection, bucket: str, rows: list[dict], 
     key = build_prefix(layer="curated", feed=feed, target_day=target_day)
     write_path = f"s3://{bucket}/{key}" #"curated/{feed}/date={day}/data.parquet"
 
-    db.execute(
-    "COPY (SELECT * FROM df) TO ? (FORMAT parquet)",
-    [write_path],
-    )
+    db.execute("""
+        COPY (
+            SELECT DISTINCT * FROM df
+            ORDER BY entity_id, timestamp
+        ) TO ? (FORMAT parquet)
+    """, [write_path])
 
 def main() -> None:
 
