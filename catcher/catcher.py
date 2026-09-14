@@ -3,14 +3,16 @@ Calgary Transit GTFS-RT catcher.
 
 Polls the configured GTFS-realtime feeds on a fixed interval and writes each
 raw snapshot to S3 as immutable, uncompressed protobuf bytes. Snapshots are
-validated as parseable protobuf before being written — to catch truncated or
-mid-write reads from the upstream feed — but the parsed object is discarded;
+validated as parseable protobuf before being written to catch truncated or
+mid-write reads from the upstream feed, but the parsed object is discarded;
 the exact response bytes are what get stored, so the raw layer stays
-reprocessable and independent of this catcher's parsing logic.
+reprocessable and independent of this catcher's parsing logic. Feeds are
+fetched concurrently so one slow or retrying feed doesn't delay the others.
 """
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 import requests
@@ -21,7 +23,7 @@ from google.transit import gtfs_realtime_pb2
 import config
 
 FETCH_MAX_ATTEMPTS = 3
-FETCH_RETRY_DELAY_SECONDS = 0.5
+FETCH_RETRY_BASE_DELAY_SECONDS = 0.3
 
 
 def build_key(feed_name: str, ts: datetime) -> str:
@@ -60,7 +62,7 @@ def fetch_once(url: str) -> bytes:
     Raises:
         requests.RequestException: If the request fails or times out.
         google.protobuf.message.DecodeError: If the response is not a valid
-        FeedMessage (truncated, corrupted, or caught mid-write upstream).
+            FeedMessage (truncated, corrupted, or caught mid-write upstream).
     """
 
     response = requests.get(url, timeout=(5, 10))
@@ -78,8 +80,10 @@ def fetch(url: str) -> bytes:
 
     Calgary's producer occasionally serves a truncated or mid-write payload;
     retrying immediately usually lands on a complete file, since the bad
-    window tends to be brief. Retries are capped so one bad feed can't eat
-    into the poll interval for the others in the same cycle.
+    window is expected to be brief relative to the feed's refresh cadence.
+    Retries are capped and cheap (well under a second worst case) so they
+    fit inside the per-feed slot of a concurrent poll cycle without pushing
+    the whole cycle over its interval.
 
     Args:
         url: Direct download URL for the feed's .pb file.
@@ -101,7 +105,7 @@ def fetch(url: str) -> bytes:
         except (requests.RequestException, message.DecodeError) as err:
             last_error = err
             if attempt < FETCH_MAX_ATTEMPTS:
-                time.sleep(FETCH_RETRY_DELAY_SECONDS * attempt)
+                time.sleep(FETCH_RETRY_BASE_DELAY_SECONDS * attempt)
 
     raise last_error
 
@@ -132,24 +136,38 @@ def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
     return key
 
 
-def poll_once(s3_client) -> None:
-    """Fetch every configured feed once and store each snapshot to S3.
+def fetch_and_store(s3_client, feed_name: str, url: str, ts: datetime) -> str:
+    """Fetch one feed (with retry) and store it. Runs in a worker thread."""
 
-    Iterates over config.FEEDS, fetching and storing each feed independently.
-    A failure on one feed (network error, timeout, or a payload that fails
-    every retry to parse as a valid FeedMessage) is logged and skipped so the
-    remaining feeds are still captured.
+    raw = fetch(url)
+    return store(s3_client, feed_name, raw, ts)
+
+
+def poll_once(s3_client, executor: ThreadPoolExecutor) -> None:
+    """Fetch every configured feed once, concurrently, and store each to S3.
+
+    Feeds are dispatched to the shared executor so a slow or retrying feed
+    doesn't delay the others' fetch start. A failure on one feed (network
+    error, timeout, or a payload that fails every retry to parse as a valid
+    FeedMessage) is logged and skipped so the remaining feeds are still
+    captured.
 
     Args:
         s3_client: An initialized boto3 S3 client, reused across all feeds.
+        executor: Shared thread pool the fetches run on.
     """
 
     ts = datetime.now(timezone.utc)
 
-    for feed_name, url in config.FEEDS.items():
+    futures = {
+        executor.submit(fetch_and_store, s3_client, feed_name, url, ts): feed_name
+        for feed_name, url in config.FEEDS.items()
+    }
+
+    for future in as_completed(futures):
+        feed_name = futures[future]
         try:
-            raw = fetch(url)
-            key = store(s3_client, feed_name, raw, ts)
+            key = future.result()
             logging.info("stored %s", key)
         except Exception as err:
             logging.error("failed %s, %s", feed_name, err)
@@ -158,8 +176,9 @@ def poll_once(s3_client) -> None:
 def main() -> None:
     """Run the catcher loop: poll all feeds every config.POLL_SECONDS forever.
 
-    Creates the S3 client and configures logging once, then repeatedly calls
-    poll_once on a steady interval that does not drift with fetch/upload time.
+    Creates the S3 client, logging, and a shared thread pool once, then
+    repeatedly calls poll_once on a steady interval that does not drift with
+    fetch/upload time under normal conditions.
     """
 
     logging.basicConfig(
@@ -169,12 +188,13 @@ def main() -> None:
 
     s3 = boto3.client("s3")
 
-    while True:
-        start = time.monotonic()
-        poll_once(s3)
+    with ThreadPoolExecutor(max_workers=len(config.FEEDS)) as executor:
+        while True:
+            start = time.monotonic()
+            poll_once(s3, executor)
 
-        elapsed = time.monotonic() - start
-        time.sleep(max(0, config.POLL_SECONDS - elapsed))
+            elapsed = time.monotonic() - start
+            time.sleep(max(0, config.POLL_SECONDS - elapsed))
 
 
 if __name__ == "__main__":
