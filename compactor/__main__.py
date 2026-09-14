@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--feed",
-        choices=sorted(COMPACTORS),
+        choices=sorted(config.FEEDS),
         default=None,
         help="Compact a single feed. Defaults to all feeds.",
     )
@@ -40,13 +40,18 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-def main():
+def main() -> None:
+
+    args = parse_args()
+
+    day = args.day
+    feed = args.feed
+    log_level = args.log_level
+    
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
     )
-
-    day = datetime(2026, 9, 13, tzinfo=timezone.utc)
 
     bucket = config.BUCKET
     region = "ca-central-1"
@@ -72,8 +77,18 @@ def main():
             )
         """)
 
-        test = vehicle_positions.VehiclePositionsCompactor(s3, bucket, executor, db)
-        test.run(day)
+    compactors = {
+        "vehicle_positions": vehicle_positions.VehiclePositionsCompactor(s3, bucket, executor, db),
+        "trip_updates": trip_updates.TripUpdatesCompactor(s3, bucket, executor, db),
+        "service_alerts": service_alerts.ServiceAlertsCompactor(s3, bucket, executor, db)
+    }
+
+    if feed is not None:
+        compactor = compactors.get(feed)
+        compactor.run(day)
+    else:
+        for compactor in compactors:
+            compactor.run(day)
 
 
 if __name__ == "__main__":
