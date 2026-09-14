@@ -10,6 +10,7 @@ reprocessable and independent of this catcher's parsing logic. Feeds are
 fetched concurrently so one slow or retrying feed doesn't delay the others.
 """
 
+import argparse
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -22,18 +23,29 @@ from google.transit import gtfs_realtime_pb2
 
 import config
 
-FETCH_MAX_ATTEMPTS = 3
-
-# Base delay between retry attempts, in seconds; attempt N waits
-# FETCH_RETRY_BASE_DELAY_SECONDS * N. 0.6 is an estimate, not a measurement:
-# a full day's trip_updates snapshots average ~7.6k post-explosion rows each,
-# which puts the raw protobuf in the low hundreds of KB — a payload that size
-# shouldn't take Calgary's server more than a couple hundred ms to regenerate,
-# so this gives roughly 2x margin over that guess. Watch for the "recovered
-# ... on attempt" log line below to see how often retries are actually
-# needed, and adjust this once real data replaces the guess.
-FETCH_RETRY_BASE_DELAY_SECONDS = 0.6
-
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="catcher",
+        description="Writes raw GTFS-RT snapshots into S3 bucket.",
+    )
+    parser.add_argument(
+        "--fetch-attempts",
+        type=int,
+        default=3,
+        help="Number of times to retry a snapshot fetch, defaults to 3.",
+    )
+    parser.add_argument(
+        "--retry-delay",
+        type=float,
+        default=0.6,
+        help="Time to wait before retrying a snapshot fetch, defaults to 0.6 seconds.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=("DEBUG", "INFO", "WARNING", "ERROR"),
+    )
+    return parser.parse_args()
 
 def build_key(feed_name: str, ts: datetime) -> str:
     """Build the S3 object key for a feed snapshot captured at a given time.
@@ -84,7 +96,7 @@ def fetch_once(url: str) -> bytes:
     return content
 
 
-def fetch(url: str) -> bytes:
+def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -> bytes:
     """Fetch a GTFS-RT feed, retrying a bounded number of times on failure.
 
     Calgary's producer occasionally serves a truncated or mid-write payload;
@@ -111,22 +123,22 @@ def fetch(url: str) -> bytes:
 
     last_error: Exception | None = None
 
-    for attempt in range(1, FETCH_MAX_ATTEMPTS + 1):
+    for attempt in range(1, fetch_max_attempts + 1):
         try:
             content = fetch_once(url)
             if attempt > 1:
                 logging.info(
                     "recovered %s on attempt %d/%d after retry",
-                    url, attempt, FETCH_MAX_ATTEMPTS,
+                    url, attempt, fetch_max_attempts,
                 )
             return content
         except (requests.RequestException, message.DecodeError) as err:
             last_error = err
-            if attempt < FETCH_MAX_ATTEMPTS:
-                delay = FETCH_RETRY_BASE_DELAY_SECONDS * attempt
+            if attempt < fetch_max_attempts:
+                delay = fetch_retry_delay_seconds * attempt
                 logging.warning(
                     "attempt %d/%d failed for %s (%s), retrying in %.2fs",
-                    attempt, FETCH_MAX_ATTEMPTS, url, err, delay,
+                    attempt, fetch_max_attempts, url, err, delay,
                 )
                 time.sleep(delay)
 
@@ -159,14 +171,14 @@ def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
     return key
 
 
-def fetch_and_store(s3_client, feed_name: str, url: str, ts: datetime) -> str:
+def fetch_and_store(s3_client, feed_name: str, url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float, ts: datetime) -> str:
     """Fetch one feed (with retry) and store it. Runs in a worker thread."""
 
-    raw = fetch(url)
+    raw = fetch(url, fetch_max_attempts, fetch_retry_delay_seconds)
     return store(s3_client, feed_name, raw, ts)
 
 
-def poll_once(s3_client, executor: ThreadPoolExecutor) -> None:
+def poll_once(s3_client, executor: ThreadPoolExecutor, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -> None:
     """Fetch every configured feed once, concurrently, and store each to S3.
 
     Feeds are dispatched to the shared executor so a slow or retrying feed
@@ -183,7 +195,7 @@ def poll_once(s3_client, executor: ThreadPoolExecutor) -> None:
     ts = datetime.now(timezone.utc)
 
     futures = {
-        executor.submit(fetch_and_store, s3_client, feed_name, url, ts): feed_name
+        executor.submit(fetch_and_store, s3_client, feed_name=feed_name, url=url, fetch_max_attempts=fetch_max_attempts, fetch_retry_delay_seconds=fetch_retry_delay_seconds, ts=ts): feed_name
         for feed_name, url in config.FEEDS.items()
     }
 
@@ -204,8 +216,14 @@ def main() -> None:
     fetch/upload time under normal conditions.
     """
 
+    args = parse_args()
+    
+    fetch_max_attempts = args.fetch_attempts
+    fetch_retry_delay_seconds = args.retry_delay
+    log_level = args.log_level
+
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
@@ -214,7 +232,7 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=len(config.FEEDS)) as executor:
         while True:
             start = time.monotonic()
-            poll_once(s3, executor)
+            poll_once(s3, executor=executor, fetch_max_attempts=fetch_max_attempts, fetch_retry_delay_seconds=fetch_retry_delay_seconds)
 
             elapsed = time.monotonic() - start
             time.sleep(max(0, config.POLL_SECONDS - elapsed))
