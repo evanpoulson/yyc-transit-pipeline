@@ -5,6 +5,7 @@ Values only. Imported by both catcher and compactor.
 
 # S3 bucket where raw snapshots and curated Parquet are both written.
 BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
+REGION = "ca-central-1"
 
 # How often the catcher polls each feed, in seconds.
 POLL_SECONDS = 20
