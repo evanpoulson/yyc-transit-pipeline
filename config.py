@@ -1,16 +1,17 @@
-"""Settings for the Calgary Transit GTFS-RT catcher.
+"""Settings shared across the Calgary Transit GTFS-RT pipeline.
 
-Values only. Imported by catcher.py.
+Values only. Imported by both catcher and compactor.
 """
 
-# S3 bucket where raw snapshots are written.
+# S3 bucket where raw snapshots and curated Parquet are both written.
 BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
 
-# How often to poll each feed, in seconds.
+# How often the catcher polls each feed, in seconds.
 POLL_SECONDS = 20
 
 # GTFS-RT feeds to capture: short name -> direct .pb download URL.
-# The name becomes part of the S3 key, so keep it short and stable.
+# The name becomes part of both the raw S3 key and the curated partition
+# path, so keep it short, stable, and matching each Compactor.feed_name.
 FEEDS = {
     "vehicle_positions": "https://data.calgary.ca/download/am7c-qe3u/application%2Foctet-stream",
     "trip_updates": "https://data.calgary.ca/download/gs4m-mdc2/application%2Foctet-stream",
