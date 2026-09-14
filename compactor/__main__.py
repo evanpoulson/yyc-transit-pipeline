@@ -54,7 +54,7 @@ def main() -> None:
     )
 
     bucket = config.BUCKET
-    region = "ca-central-1"
+    region = config.REGION
 
     session = boto3.Session()
     s3 = boto3.client("s3", config=Config(max_pool_connections=32))
@@ -77,18 +77,18 @@ def main() -> None:
             )
         """)
 
-    compactors = {
-        "vehicle_positions": vehicle_positions.VehiclePositionsCompactor(s3, bucket, executor, db),
-        "trip_updates": trip_updates.TripUpdatesCompactor(s3, bucket, executor, db),
-        "service_alerts": service_alerts.ServiceAlertsCompactor(s3, bucket, executor, db)
-    }
-
-    if feed is not None:
-        compactor = compactors.get(feed)
-        compactor.run(day)
-    else:
-        for compactor in compactors:
+        compactors = {
+            "vehicle_positions": vehicle_positions.VehiclePositionsCompactor(s3, bucket, executor, db),
+            "trip_updates": trip_updates.TripUpdatesCompactor(s3, bucket, executor, db),
+            "service_alerts": service_alerts.ServiceAlertsCompactor(s3, bucket, executor, db)
+        }
+        
+        if feed is not None:
+            compactor = compactors.get(feed)
             compactor.run(day)
+        else:
+            for compactor in compactors:
+                compactor.run(day)
 
 
 if __name__ == "__main__":
