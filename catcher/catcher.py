@@ -2,8 +2,11 @@
 Calgary Transit GTFS-RT catcher.
 
 Polls the configured GTFS-realtime feeds on a fixed interval and writes each
-raw snapshot to S3 as immutable, uncompressed protobuf bytes. Does not parse
-the feeds; parsing happens downstream so the raw layer stays reprocessable.
+raw snapshot to S3 as immutable, uncompressed protobuf bytes. Snapshots are
+validated as parseable protobuf before being written — to catch truncated or
+mid-write reads from the upstream feed — but the parsed object is discarded;
+the exact response bytes are what get stored, so the raw layer stays
+reprocessable and independent of this catcher's parsing logic.
 """
 
 import logging
@@ -12,14 +15,20 @@ from datetime import datetime, timezone
 
 import requests
 import boto3
+from google.protobuf import message
+from google.transit import gtfs_realtime_pb2
 
 import config
+
+FETCH_MAX_ATTEMPTS = 3
+FETCH_RETRY_DELAY_SECONDS = 0.5
+
 
 def build_key(feed_name: str, ts: datetime) -> str:
     """Build the S3 object key for a feed snapshot captured at a given time.
 
     Produces a partition-friendly, unique key of the form
-    raw/<feed_name>/<YYYY>/<MM>/<DD>/<HH>/<feed_name>_<epoch>.pb.gz
+    raw/<feed_name>/<YYYY>/<MM>/<DD>/<HH>/<feed_name>_<epoch>.pb
 
     Args:
         feed_name: Short feed identifier (e.g. "vehicle_positions").
@@ -35,11 +44,12 @@ def build_key(feed_name: str, ts: datetime) -> str:
     return key
 
 
-def fetch(url: str) -> bytes:
-    """Fetch a single GTFS-RT feed and return its raw bytes.
+def fetch_once(url: str) -> bytes:
+    """Fetch a single GTFS-RT feed once and return its raw bytes.
 
-    Does not parse or validate the payload; returns the exact bytes so the
-    raw layer stays reprocessable.
+    Validates that the response is a parseable FeedMessage before returning,
+    to catch truncated reads or a producer caught mid-write, but returns the
+    original bytes unmodified — the parsed object is discarded, not stored.
 
     Args:
         url: Direct download URL for the feed's .pb file.
@@ -49,11 +59,51 @@ def fetch(url: str) -> bytes:
 
     Raises:
         requests.RequestException: If the request fails or times out.
+        google.protobuf.message.DecodeError: If the response is not a valid
+        FeedMessage (truncated, corrupted, or caught mid-write upstream).
     """
 
     response = requests.get(url, timeout=(5, 10))
     response.raise_for_status()
-    return response.content
+
+    content = response.content
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(content)  # validation only; raises on bad payload
+
+    return content
+
+
+def fetch(url: str) -> bytes:
+    """Fetch a GTFS-RT feed, retrying a bounded number of times on failure.
+
+    Calgary's producer occasionally serves a truncated or mid-write payload;
+    retrying immediately usually lands on a complete file, since the bad
+    window tends to be brief. Retries are capped so one bad feed can't eat
+    into the poll interval for the others in the same cycle.
+
+    Args:
+        url: Direct download URL for the feed's .pb file.
+
+    Returns:
+        The raw response body as bytes.
+
+    Raises:
+        requests.RequestException: If every attempt fails on the request.
+        google.protobuf.message.DecodeError: If every attempt returns a
+            payload that fails to parse as a FeedMessage.
+    """
+
+    last_error: Exception | None = None
+
+    for attempt in range(1, FETCH_MAX_ATTEMPTS + 1):
+        try:
+            return fetch_once(url)
+        except (requests.RequestException, message.DecodeError) as err:
+            last_error = err
+            if attempt < FETCH_MAX_ATTEMPTS:
+                time.sleep(FETCH_RETRY_DELAY_SECONDS * attempt)
+
+    raise last_error
 
 
 def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
@@ -86,8 +136,9 @@ def poll_once(s3_client) -> None:
     """Fetch every configured feed once and store each snapshot to S3.
 
     Iterates over config.FEEDS, fetching and storing each feed independently.
-    A failure on one feed (network error, bad response) is logged and skipped
-    so the remaining feeds are still captured.
+    A failure on one feed (network error, timeout, or a payload that fails
+    every retry to parse as a valid FeedMessage) is logged and skipped so the
+    remaining feeds are still captured.
 
     Args:
         s3_client: An initialized boto3 S3 client, reused across all feeds.
