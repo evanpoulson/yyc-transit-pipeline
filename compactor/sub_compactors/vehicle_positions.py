@@ -1,10 +1,10 @@
 from base_compactor import Compactor
-from schemas import VEHICLE_POSITIONS_SCHEMA
+from schemas import SCHEMAS
 
 class VehiclePositionsCompactor(Compactor):
 
     feed_name = "vehicle_positions"
-    schema = VEHICLE_POSITIONS_SCHEMA
+    schema = SCHEMAS.get(feed_name)
     sort_keys = ("entity_id", "timestamp")
 
     def shape_entity(self, entity) -> list[dict]:
