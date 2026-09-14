@@ -7,10 +7,8 @@ import boto3
 import duckdb
 from botocore.config import Config
 
-from sub_compactors import vehicle_positions, trip_updates, service_alerts
-
-BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
-REGION = "ca-central-1"
+from compactor.sub_compactors import vehicle_positions, trip_updates, service_alerts
+import config
 
 def parse_day(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -48,10 +46,13 @@ def main():
         format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
     )
 
-    day = datetime(2026, 9, 12, tzinfo=timezone.utc)
+    day = datetime(2026, 9, 13, tzinfo=timezone.utc)
+
+    bucket = config.BUCKET
+    region = "ca-central-1"
 
     session = boto3.Session()
-    s3 = boto3.client("s3", region_name=REGION, config=Config(max_pool_connections=32))
+    s3 = boto3.client("s3", config=Config(max_pool_connections=32))
 
     creds = session.get_credentials().get_frozen_credentials()
 
@@ -67,11 +68,11 @@ def main():
                 KEY_ID '{creds.access_key}',
                 SECRET '{creds.secret_key}',
                 {token_line}
-                REGION '{REGION}'
+                REGION '{region}'
             )
         """)
 
-        test = trip_updates.TripUpdatesCompactor(s3, BUCKET, executor, db)
+        test = vehicle_positions.VehiclePositionsCompactor(s3, bucket, executor, db)
         test.run(day)
 
 
