@@ -55,7 +55,6 @@ SCHEMAS = {
     ]),
     "service_alerts": pa.schema([
         ("entity_id", pa.string()),
-        ("header_timestamp", pa.int64()),
         ("cause", pa.int64()),
         ("effect", pa.int64()),
         ("severity_level", pa.int64()),
