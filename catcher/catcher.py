@@ -3,8 +3,8 @@ Calgary Transit GTFS-RT catcher.
 
 Polls the configured GTFS-realtime feeds on a fixed interval and writes each
 raw snapshot to S3 as immutable, uncompressed protobuf bytes. Snapshots are
-validated as parseable protobuf before being written to catch truncated or
-mid-write reads from the upstream feed, but the parsed object is discarded;
+validated as parseable protobuf before being written — to catch truncated or
+mid-write reads from the upstream feed — but the parsed object is discarded;
 the exact response bytes are what get stored, so the raw layer stays
 reprocessable and independent of this catcher's parsing logic. Feeds are
 fetched concurrently so one slow or retrying feed doesn't delay the others.
@@ -23,7 +23,16 @@ from google.transit import gtfs_realtime_pb2
 import config
 
 FETCH_MAX_ATTEMPTS = 3
-FETCH_RETRY_BASE_DELAY_SECONDS = 0.3
+
+# Base delay between retry attempts, in seconds; attempt N waits
+# FETCH_RETRY_BASE_DELAY_SECONDS * N. 0.6 is an estimate, not a measurement:
+# a full day's trip_updates snapshots average ~7.6k post-explosion rows each,
+# which puts the raw protobuf in the low hundreds of KB — a payload that size
+# shouldn't take Calgary's server more than a couple hundred ms to regenerate,
+# so this gives roughly 2x margin over that guess. Watch for the "recovered
+# ... on attempt" log line below to see how often retries are actually
+# needed, and adjust this once real data replaces the guess.
+FETCH_RETRY_BASE_DELAY_SECONDS = 0.6
 
 
 def build_key(feed_name: str, ts: datetime) -> str:
@@ -81,9 +90,12 @@ def fetch(url: str) -> bytes:
     Calgary's producer occasionally serves a truncated or mid-write payload;
     retrying immediately usually lands on a complete file, since the bad
     window is expected to be brief relative to the feed's refresh cadence.
-    Retries are capped and cheap (well under a second worst case) so they
-    fit inside the per-feed slot of a concurrent poll cycle without pushing
-    the whole cycle over its interval.
+    Retries are capped and cheap so they fit inside the per-feed slot of a
+    concurrent poll cycle without pushing the whole cycle over its interval.
+
+    Logs a warning per failed attempt (with cause) and an info line if a
+    retry recovers the fetch, so the actual retry-need rate can be observed
+    over time instead of assumed.
 
     Args:
         url: Direct download URL for the feed's .pb file.
@@ -101,11 +113,22 @@ def fetch(url: str) -> bytes:
 
     for attempt in range(1, FETCH_MAX_ATTEMPTS + 1):
         try:
-            return fetch_once(url)
+            content = fetch_once(url)
+            if attempt > 1:
+                logging.info(
+                    "recovered %s on attempt %d/%d after retry",
+                    url, attempt, FETCH_MAX_ATTEMPTS,
+                )
+            return content
         except (requests.RequestException, message.DecodeError) as err:
             last_error = err
             if attempt < FETCH_MAX_ATTEMPTS:
-                time.sleep(FETCH_RETRY_BASE_DELAY_SECONDS * attempt)
+                delay = FETCH_RETRY_BASE_DELAY_SECONDS * attempt
+                logging.warning(
+                    "attempt %d/%d failed for %s (%s), retrying in %.2fs",
+                    attempt, FETCH_MAX_ATTEMPTS, url, err, delay,
+                )
+                time.sleep(delay)
 
     raise last_error
 
