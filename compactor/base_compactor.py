@@ -49,7 +49,7 @@ class Compactor(ABC):
         self.parse_failed = 0
 
     @abstractmethod
-    def shape_entity(self, entity: gtfs_realtime_pb2.FeedEntity, header: gtfs_realtime_pb2.FeedHeader) -> list[dict]: ...
+    def shape_entity(self, entity: gtfs_realtime_pb2.FeedEntity) -> list[dict]: ...
 
     def reset_counters(self) -> None:
         self.attempted = 0
@@ -111,7 +111,7 @@ class Compactor(ABC):
     def parse_snapshot(self, snapshot: bytes) -> list[dict]:
         feed = gtfs_realtime_pb2.FeedMessage()
         feed.ParseFromString(snapshot)
-        entities = [self.shape_entity(entity, feed.header) for entity in feed.entity]
+        entities = [self.shape_entity(entity) for entity in feed.entity]
         return list(itertools.chain.from_iterable(entities))
 
     def fetch_rows(self, paths: list[str]) -> list[dict]:
