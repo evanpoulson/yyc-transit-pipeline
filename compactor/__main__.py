@@ -7,7 +7,7 @@ import boto3
 import duckdb
 from botocore.config import Config
 
-from sub_compactors.vehicle_positions import VehiclePositionsCompactor
+from sub_compactors import vehicle_positions, trip_updates, service_alerts
 
 BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
 REGION = "ca-central-1"
@@ -71,7 +71,7 @@ def main():
             )
         """)
 
-        test = VehiclePositionsCompactor(s3, BUCKET, executor, db)
+        test = trip_updates.TripUpdatesCompactor(s3, BUCKET, executor, db)
         test.run(day)
 
 
