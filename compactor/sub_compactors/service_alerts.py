@@ -21,9 +21,9 @@ class ServiceAlertsCompactor(Compactor):
 
         base = {
             "entity_id":        entity.id or None,
-            "cause":            a.cause,
-            "effect":           a.effect,
-            "severity_level":   a.severity_level,
+            "cause":            a.cause if a.HasField("cause") else None,
+            "effect":           a.effect if a.HasField("effect") else None,
+            "severity_level":   a.severity_level if a.HasField("severity_level") else None,
             "header_text":       self._first_text(a.header_text) if a.HasField("header_text") else None,
             "description_text":  self._first_text(a.description_text) if a.HasField("description_text") else None,
             "url":               self._first_text(a.url) if a.HasField("url") else None,
