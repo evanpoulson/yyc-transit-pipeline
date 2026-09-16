@@ -92,6 +92,10 @@ def fetch_once(url: str) -> bytes:
     content = response.content
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(content)  # validation only; raises on bad payload
+    if not feed.IsInitialized():
+        raise message.DecodeError(
+            f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
+        )
 
     return content
 
