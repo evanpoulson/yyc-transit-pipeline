@@ -31,9 +31,9 @@ class VehiclePositionsCompactor(Compactor):
             "speed":                 p.speed if v.HasField("position") else None,
             "current_stop_sequence": v.current_stop_sequence if v.HasField("current_stop_sequence") else None,
             "stop_id":               v.stop_id if v.HasField("stop_id") else None,
-            "current_status":        v.current_status,
+            "current_status":        v.current_status if v.HasField("current_status") else None,
             "timestamp":             v.timestamp if v.HasField("timestamp") else None,
-            "congestion_level":      v.congestion_level,
+            "congestion_level":      v.congestion_level if v.HasField("congestion_level") else None,
             "occupancy_status":      v.occupancy_status if v.HasField("occupancy_status") else None,
             "occupancy_percentage":  v.occupancy_percentage if v.HasField("occupancy_percentage") else None,
             "multi_carriage_details": [
