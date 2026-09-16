@@ -4,7 +4,7 @@ from compactor.schemas import SCHEMAS
 class TripUpdatesCompactor(Compactor):
 
     feed_name = "trip_updates"
-    schema = SCHEMAS.get(feed_name)
+    schema = SCHEMAS[feed_name]
     sort_keys = ("entity_id", "stop_sequence", "timestamp")
 
     def shape_entity(self, entity) -> list[dict]:
