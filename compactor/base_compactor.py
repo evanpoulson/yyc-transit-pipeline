@@ -10,6 +10,7 @@ import botocore.exceptions
 import duckdb
 import pyarrow as pa
 from google.transit import gtfs_realtime_pb2
+from google.protobuf import message
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,12 @@ class Compactor(ABC):
     def parse_snapshot(self, snapshot: bytes) -> list[dict]:
         feed = gtfs_realtime_pb2.FeedMessage()
         feed.ParseFromString(snapshot)
+
+        if not feed.IsInitialized():
+            raise message.DecodeError(
+                f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
+            )
+    
         entities = [self.shape_entity(entity) for entity in feed.entity]
         return list(itertools.chain.from_iterable(entities))
 
