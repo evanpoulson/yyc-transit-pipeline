@@ -4,7 +4,7 @@ from compactor.schemas import SCHEMAS
 class ServiceAlertsCompactor(Compactor):
 
     feed_name = "service_alerts"
-    schema = SCHEMAS.get(feed_name)
+    schema = SCHEMAS[feed_name]
     sort_keys = ("route_id", "entity_id")
 
     @staticmethod

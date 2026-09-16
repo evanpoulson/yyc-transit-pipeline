@@ -10,6 +10,12 @@ from botocore.config import Config
 from compactor.sub_compactors import vehicle_positions, trip_updates, service_alerts
 import config
 
+COMPACTORS = {
+    "vehicle_positions": vehicle_positions.VehiclePositionsCompactor,
+    "trip_updates":      trip_updates.TripUpdatesCompactor,
+    "service_alerts":    service_alerts.ServiceAlertsCompactor,
+}
+
 def parse_day(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
@@ -29,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--feed",
-        choices=sorted(config.FEEDS),
+        choices=sorted(COMPACTORS),
         default=None,
         help="Compact a single feed. Defaults to all feeds.",
     )
@@ -52,6 +58,10 @@ def main() -> None:
         level=log_level,
         format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
     )
+
+    unhandled = set(config.FEEDS) - set(COMPACTORS)
+    if unhandled:
+        logging.warning("feeds captured but not compacted: %s", sorted(unhandled))
 
     bucket = config.BUCKET
     region = config.REGION
@@ -76,20 +86,15 @@ def main() -> None:
                 REGION '{region}'
             )
         """)
-
-        compactors = {
-            "vehicle_positions": vehicle_positions.VehiclePositionsCompactor(s3, bucket, executor, db),
-            "trip_updates": trip_updates.TripUpdatesCompactor(s3, bucket, executor, db),
-            "service_alerts": service_alerts.ServiceAlertsCompactor(s3, bucket, executor, db)
-        }
         
+        compactors = {name: cls(s3, bucket, executor, db) for name, cls in COMPACTORS.items()}
+
         if feed is not None:
-            compactor = compactors.get(feed)
-            compactor.run(day)
+            compactors[feed].run(day)
         else:
             for feed, compactor in compactors.items():
                 try:
-                    compactor.run(day)
+                    compactor[feed].run(day)
                     print(f"Successfully compacted {feed} for {day}.")
                 except Exception as e:
                      print(f"Exception, {e}, occured while compacting {feed} for {day}.")
