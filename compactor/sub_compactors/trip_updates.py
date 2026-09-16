@@ -46,7 +46,7 @@ class TripUpdatesCompactor(Compactor):
                 "departure_delay": u.departure.delay if u.HasField("departure") and u.departure.HasField("delay") else None,
                 "departure_time":  u.departure.time if u.HasField("departure") and u.departure.HasField("time") else None,
                 "departure_occupancy_status": u.departure_occupancy_status if u.HasField("departure_occupancy_status") else None,
-                "stop_schedule_relationship": u.schedule_relationship if u.hasField("stop_schedule_relationship") else None
+                "stop_schedule_relationship": u.schedule_relationship if u.HasField("schedule_relationship") else None
             }
             for u in tu.stop_time_update
         ]

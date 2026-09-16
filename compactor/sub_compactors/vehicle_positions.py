@@ -40,7 +40,7 @@ class VehiclePositionsCompactor(Compactor):
                 {
                     "id": c.id or None,
                     "label": c.label or None,
-                    "occupancy_status": c.occupancy_status,
+                    "occupancy_status": c.occupancy_status if c.HasField("occupancy_status") else None,
                     "occupancy_percentage": c.occupancy_percentage if c.HasField("occupancy_percentage") else None,
                     "carriage_sequence": c.carriage_sequence if c.HasField("carriage_sequence") else None,
                 }
