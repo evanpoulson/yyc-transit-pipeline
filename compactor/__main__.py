@@ -44,7 +44,7 @@ def main() -> None:
 
     args = parse_args()
 
-    day = args.day
+    day = resolve_target_day(args.day)
     feed = args.feed
     log_level = args.log_level
     
@@ -87,8 +87,12 @@ def main() -> None:
             compactor = compactors.get(feed)
             compactor.run(day)
         else:
-            for compactor in compactors:
-                compactor.run(day)
+            for feed, compactor in compactors.items():
+                try:
+                    compactor.run(day)
+                    print(f"Successfully compacted {feed} for {day}.")
+                except Exception as e:
+                     print(f"Exception, {e}, occured while compacting {feed} for {day}.")
 
 
 if __name__ == "__main__":
