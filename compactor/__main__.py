@@ -96,7 +96,7 @@ def main() -> None:
                 try:
                     compactor.run(day)
                 except Exception:
-                     logging.error("Failed to compact %s, due to %s", feed, exc_info=True)
+                     logging.error("Failed to compact %s", feed, exc_info=True)
 
 
 if __name__ == "__main__":

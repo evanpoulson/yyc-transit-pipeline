@@ -74,14 +74,14 @@ class Compactor(ABC):
     def failure_rate(self) -> float:
         if self.discovered == 0:
             return 0.0
-        return (self.failed / self.discovered) * 100
+        return self.failed / self.discovered
 
 
     @property
     def coverage(self) -> float:
         if self.discovered == 0:
             return 0.0
-        return (self.discovered / self.expected) * 100
+        return self.discovered / self.expected
 
 
     def build_prefix(self, layer: str, feed: str, target_day: datetime) -> str:
@@ -252,8 +252,8 @@ class Compactor(ABC):
         logger.info(
             "%s: %.2f%% snapshot coverage, %.2f%% snapshots failed (%d download failures, %d parse failures)",
             self.feed_name,
-            self.coverage,
-            self.failure_rate,
+            self.coverage * 100,
+            self.failure_rate * 100,
             self.download_failed,
             self.parse_failed,
         )
