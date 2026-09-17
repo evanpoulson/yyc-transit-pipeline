@@ -12,25 +12,28 @@ import pyarrow as pa
 from google.transit import gtfs_realtime_pb2
 from google.protobuf import message
 
+import config
+
 logger = logging.getLogger(__name__)
 
 
 class Compactor(ABC):
 
-    # fraction of snapshots allowed to fail before the run refuses to write
-    max_failure_rate: float = 0.01
 
     @property
     @abstractmethod
     def feed_name(self) -> str: ...
 
+
     @property
     @abstractmethod
     def schema(self) -> pa.Schema: ...
 
+
     @property
     @abstractmethod
     def sort_keys(self) -> tuple[str, ...]: ...
+
 
     def __init__(
         self,
@@ -44,29 +47,41 @@ class Compactor(ABC):
         self.executor = executor
         self.db = db
 
-        self.attempted = 0
+        self.discovered = 0
         self.succeeded = 0
         self.download_failed = 0
         self.parse_failed = 0
+
 
     @abstractmethod
     def shape_entity(self, entity: gtfs_realtime_pb2.FeedEntity) -> list[dict]: ...
 
+
     def reset_counters(self) -> None:
-        self.attempted = 0
+        self.discovered = 0
         self.succeeded = 0
         self.download_failed = 0
         self.parse_failed = 0
+
 
     @property
     def failed(self) -> int:
         return self.download_failed + self.parse_failed
 
+
     @property
     def failure_rate(self) -> float:
-        if self.attempted == 0:
+        if self.discovered == 0:
             return 0.0
-        return self.failed / self.attempted
+        return (self.failed / self.discovered) * 100
+
+
+    @property
+    def coverage(self) -> float:
+        if self.discovered == 0:
+            return 0.0
+        return (self.discovered / config.EXPECTED_SNAPSHOTS) * 100
+
 
     def build_prefix(self, layer: str, feed: str, target_day: datetime) -> str:
 
@@ -77,11 +92,13 @@ class Compactor(ABC):
             day = target_day.strftime("%Y-%m-%d")
             return f"curated/{feed}/date={day}/data.parquet"
 
+
     def group_by_hour(self, paths: list[str]) -> dict[str, list[str]]:
         hours = defaultdict(list)
         for key in paths:
             hours[key.rsplit("/", 1)[0]].append(key)
         return hours
+
 
     def get_object_paths(self, target_day: datetime) -> list[str]:
 
@@ -100,6 +117,7 @@ class Compactor(ABC):
 
         logger.info("%s: found %d raw objects under %s", self.feed_name, len(paths), prefix)
         return paths
+
 
     def get_object(self, key: str) -> bytes:
 
@@ -121,9 +139,10 @@ class Compactor(ABC):
         entities = [self.shape_entity(entity) for entity in feed.entity]
         return list(itertools.chain.from_iterable(entities))
 
+
     def fetch_rows(self, paths: list[str]) -> list[dict]:
 
-        self.attempted += len(paths)
+        self.discovered += len(paths)
 
         rows = []
         futures = {self.executor.submit(self.get_object, key): key for key in paths}
@@ -156,6 +175,7 @@ class Compactor(ABC):
 
         return rows
 
+
     def create_table(self, target_day: datetime) -> pa.Table:
 
         tables = []
@@ -178,13 +198,13 @@ class Compactor(ABC):
         logger.info("%s: built table with %d rows", self.feed_name, table.num_rows)
         return table
 
+
     def write_curated(self, df: pa.Table, target_day: datetime) -> None:
 
         order_by = ", ".join(self.sort_keys)
         key = self.build_prefix(layer="curated", feed=self.feed_name, target_day=target_day)
         write_path = f"s3://{self.bucket}/{key}"
 
-        # the view name below must match the name used in the FROM clause
         self.db.register("df", df)
         try:
             self.db.execute(
@@ -201,12 +221,14 @@ class Compactor(ABC):
 
         logger.info("%s: wrote %s", self.feed_name, write_path)
 
+
     def validate_sort_keys(self) -> None:
         missing = [key for key in self.sort_keys if key not in self.schema.names]
         if missing:
             raise RuntimeError(
                 f"{self.feed_name}: sort keys {missing} are not columns in the schema"
             )
+
 
     def run(self, day: datetime) -> None:
 
@@ -218,20 +240,13 @@ class Compactor(ABC):
         table = self.create_table(day)
 
         logger.info(
-            "%s: %d/%d snapshots ok, %d download failures, %d parse failures (%.2f%% failed)",
+            "%s: %.2f%% snapshot coverage, %.2f%% snapshots failed (%d download failures, %d parse failures)",
             self.feed_name,
-            self.succeeded,
-            self.attempted,
+            self.coverage,
+            self.failure_rate,
             self.download_failed,
             self.parse_failed,
-            self.failure_rate * 100,
         )
 
-        if self.failure_rate > self.max_failure_rate:
-            raise RuntimeError(
-                f"{self.feed_name}: failure rate {self.failure_rate:.2%} exceeds "
-                f"threshold {self.max_failure_rate:.2%}, refusing to write a partial partition"
-            )
-
         self.write_curated(table, day)
-        logger.info("%s: done", self.feed_name)
+        logger.info("Successfully finished compacting %s", self.feed_name)

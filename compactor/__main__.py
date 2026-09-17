@@ -61,7 +61,7 @@ def main() -> None:
 
     unhandled = set(config.FEEDS) - set(COMPACTORS)
     if unhandled:
-        logging.warning("feeds captured but not compacted: %s", sorted(unhandled))
+        logging.warning("Feeds captured but not compacted: %s", sorted(unhandled))
 
     bucket = config.BUCKET
     region = config.REGION
@@ -95,9 +95,8 @@ def main() -> None:
             for feed, compactor in compactors.items():
                 try:
                     compactor.run(day)
-                    logging.info("Successfully completed compaction of %s", feed)
-                except Exception as e:
-                     logging.error("Failed to compact %s, due to %s", feed, e)
+                except Exception:
+                     logging.error("Failed to compact %s, due to %s", feed, exc_info=True)
 
 
 if __name__ == "__main__":
