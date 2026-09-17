@@ -20,8 +20,8 @@ class TripUpdatesCompactor(Compactor):
             "start_time":            t.start_time if t.HasField("start_time") else None,
             "start_date":            t.start_date if t.HasField("start_date") else None,
             "schedule_relationship": t.schedule_relationship if t.HasField("schedule_relationship") else None,
-            "vehicle_id":            d.id if tu.HasField("vehicle") else None,
-            "vehicle_label":         d.label if tu.HasField("vehicle") else None,
+            "vehicle_id":            d.id if d.HasField("id") else None,
+            "vehicle_label":         d.label if d.HasField("label") else None,
             "timestamp":             tu.timestamp if tu.HasField("timestamp") else None,
             "delay":                 tu.delay if tu.HasField("delay") else None,
         }
