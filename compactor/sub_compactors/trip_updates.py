@@ -1,13 +1,26 @@
+"""Compactor for the trip_updates feed."""
+
 from compactor.base_compactor import Compactor
 from compactor.schemas import SCHEMAS
 
+
 class TripUpdatesCompactor(Compactor):
+    """Explodes each TripUpdate into one row per stop_time_update.
+
+    The row grain is the leaf: a TripUpdate with 40 stop updates becomes 40
+    rows, each carrying the trip-level fields. A TripUpdate with no stop
+    updates still yields one row, with the stop columns null, so the trip is
+    not dropped from the record. Optional fields are read through HasField on
+    their owning message so absent values stay None rather than protobuf
+    defaults.
+    """
 
     feed_name = "trip_updates"
     schema = SCHEMAS[feed_name]
     sort_keys = ("entity_id", "stop_sequence", "timestamp")
 
     def shape_entity(self, entity) -> list[dict]:
+        """Return one row per stop_time_update, or one null-stop row if there are none."""
         tu = entity.trip_update
         t = tu.trip
         d = tu.vehicle
