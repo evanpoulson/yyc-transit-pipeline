@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 import itertools
 import logging
@@ -47,6 +47,7 @@ class Compactor(ABC):
         self.executor = executor
         self.db = db
 
+        self.expected = config.EXPECTED_SNAPSHOTS
         self.discovered = 0
         self.succeeded = 0
         self.download_failed = 0
@@ -80,7 +81,7 @@ class Compactor(ABC):
     def coverage(self) -> float:
         if self.discovered == 0:
             return 0.0
-        return (self.discovered / config.EXPECTED_SNAPSHOTS) * 100
+        return (self.discovered / self.expected) * 100
 
 
     def build_prefix(self, layer: str, feed: str, target_day: datetime) -> str:
@@ -209,12 +210,21 @@ class Compactor(ABC):
         try:
             self.db.execute(
                 f"""
-                COPY (
-                    SELECT DISTINCT * FROM df
-                    ORDER BY {order_by}
-                ) TO ? (FORMAT parquet);
-                """,
-                [write_path],
+                COPY (SELECT DISTINCT * FROM df ORDER BY {order_by}) 
+                TO '{write_path}' (FORMAT parquet, KV_METADATA {{
+                
+                build_ts: '{datetime.now(timezone.utc).isoformat()}',
+                feed_name: '{self.feed_name}',
+                day: '{target_day.strftime("%Y-%m-%d")}',
+                expected: '{self.expected}',
+                discovered: '{self.discovered}',
+                succeeded: '{self.succeeded}',
+                download_failed: '{self.download_failed}',
+                parse_failed: '{self.parse_failed}',
+                coverage: '{self.coverage:.4f}',
+                failure_rate: '{self.failure_rate:.4f}'
+                }});
+                """
             )
         finally:
             self.db.unregister("df")
