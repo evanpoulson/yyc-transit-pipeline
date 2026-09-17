@@ -1,7 +1,17 @@
+"""Compactor for the service_alerts feed."""
+
 from compactor.base_compactor import Compactor
 from compactor.schemas import SCHEMAS
 
+
 class ServiceAlertsCompactor(Compactor):
+    """Explodes each Alert into one row per informed_entity.
+
+    The row grain is the leaf: an alert targeting several routes or stops
+    becomes several rows. An alert with no informed entities still yields one
+    row so it is not dropped. header_text, description_text, and url are GTFS
+    TranslatedStrings, reduced to a single string by _first_text.
+    """
 
     feed_name = "service_alerts"
     schema = SCHEMAS[feed_name]
@@ -9,6 +19,11 @@ class ServiceAlertsCompactor(Compactor):
 
     @staticmethod
     def _first_text(translated_string) -> str | None:
+        """Return one string from a GTFS TranslatedString.
+
+        Prefers the translation with no language tag (Calgary's default),
+        falling back to the first translation. Returns None if there are none.
+        """
         if not translated_string.translation:
             return None
         for t in translated_string.translation:
@@ -17,6 +32,7 @@ class ServiceAlertsCompactor(Compactor):
         return translated_string.translation[0].text
 
     def shape_entity(self, entity) -> list[dict]:
+        """Return one row per informed_entity, or one null-entity row if there are none."""
         a = entity.alert
 
         base = {

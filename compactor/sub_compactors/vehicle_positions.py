@@ -1,13 +1,27 @@
+"""Compactor for the vehicle_positions feed."""
+
 from compactor.base_compactor import Compactor
 from compactor.schemas import SCHEMAS
 
+
 class VehiclePositionsCompactor(Compactor):
+    """Flattens each VehiclePosition entity into a single row.
+
+    Optional fields are read through HasField on the message that owns them:
+    the nested trip, vehicle, and position sub-messages, not the top-level
+    VehiclePosition. Calling HasField on the wrong message either raises (the
+    field name does not exist there) or silently leaks the protobuf default, so
+    an absent field must become None rather than 0 or "" — an unreported
+    bearing is not "heading due north," and an unreported occupancy is not
+    "empty."
+    """
 
     feed_name = "vehicle_positions"
     schema = SCHEMAS[feed_name]
     sort_keys = ("entity_id", "timestamp")
 
     def shape_entity(self, entity) -> list[dict]:
+        """Return a single-row list for one VehiclePosition entity."""
         v = entity.vehicle
         t = v.trip
         d = v.vehicle
