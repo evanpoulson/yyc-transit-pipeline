@@ -94,10 +94,10 @@ def main() -> None:
         else:
             for feed, compactor in compactors.items():
                 try:
-                    compactor[feed].run(day)
-                    print(f"Successfully compacted {feed} for {day}.")
+                    compactor.run(day)
+                    logging.info("Successfully completed compaction of %s", feed)
                 except Exception as e:
-                     print(f"Exception, {e}, occured while compacting {feed} for {day}.")
+                     logging.error("Failed to compact %s, due to %s", feed, e)
 
 
 if __name__ == "__main__":
