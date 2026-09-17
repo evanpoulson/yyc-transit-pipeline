@@ -16,8 +16,9 @@ more accurate arrival-time predictor.
 
 - **catcher/** — always-on service polling the GTFS-RT feeds every 20s and
   writing raw, immutable snapshots to S3.
-- **compactor/** — scheduled job that rolls raw snapshots into partitioned
-  columnar files for analysis.
+- **compactor/** — batch job that rolls a day of raw snapshots into one
+  sorted, typed Parquet file per feed, with each day's completeness and
+  quality metrics stamped into the Parquet footer.
 - **dbt/** — transformations and data-quality tests. *(planned)*
 - **dashboard/** — accuracy report and live map. *(planned)*
 - **infra/** — Terraform for all AWS resources. *(planned)*
@@ -28,12 +29,13 @@ GTFS-RT feeds → catcher → S3 (raw) → compactor → S3 (curated) → analys
 
 ## Status
 
-Early development. Catcher and compactor are both running; building out
-dbt transformations next.
+Early development. The catcher runs in production on EC2. The compactor
+produces the curated layer for every day collected so far, run by hand from a
+laptop; deploying and scheduling it is next, then the dbt transformations.
 
 ## Tech
 
-Python, AWS (S3, EC2), DuckDB, dbt, Dagster, Terraform.
+Python, AWS (S3, EC2), DuckDB, PyArrow, dbt, Dagster, Terraform.
 
 ## Running
 
