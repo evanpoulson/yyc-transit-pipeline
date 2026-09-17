@@ -1,3 +1,22 @@
+"""Explicit PyArrow schemas for the curated layer, one per feed.
+
+Schemas are declared rather than inferred so every day's partition has
+identical column types and the partitions stack. Inference from per-day dicts
+would drift (a column that is all-null one day and integer the next yields
+different types), and some choices here are deliberate rather than whatever
+inference would pick:
+
+- Identifier-like fields (stop_id, trip_id, route_id, ...) are strings even
+  when Calgary's values look numeric, because they are identifiers, not
+  quantities, and GTFS does not guarantee they stay numeric.
+- Enum-like fields (current_status, schedule_relationship, occupancy_status,
+  cause, effect, severity_level) keep their integer codes. Mapping codes to
+  labels is a presentation concern and belongs in dbt, where it is visible,
+  testable, and changeable without reprocessing.
+
+Keyed by feed name, matching each Compactor.feed_name and config.FEEDS.
+"""
+
 import pyarrow as pa
 
 SCHEMAS = {
@@ -18,7 +37,7 @@ SCHEMAS = {
         ("odometer", pa.float64()),
         ("speed", pa.float64()),
         ("current_stop_sequence", pa.int64()),
-        ("stop_id", pa.string()),          # note: string, see below
+        ("stop_id", pa.string()),          # identifier, not a quantity: kept string
         ("current_status", pa.int64()),
         ("timestamp", pa.int64()),
         ("congestion_level", pa.int64()),
