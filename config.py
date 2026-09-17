@@ -18,3 +18,5 @@ FEEDS = {
     "trip_updates": "https://data.calgary.ca/download/gs4m-mdc2/application%2Foctet-stream",
     "service_alerts": "https://data.calgary.ca/download/jhgn-ynqj/application%2Foctet-stream",
 }
+
+EXPECTED_SNAPSHOTS = 86400 // POLL_SECONDS
