@@ -19,4 +19,7 @@ FEEDS = {
     "service_alerts": "https://data.calgary.ca/download/jhgn-ynqj/application%2Foctet-stream",
 }
 
+# Snapshots expected per feed over a full day at the configured poll interval
+# (86400 seconds / POLL_SECONDS). The compactor uses this as the denominator
+# for a day's coverage metric.
 EXPECTED_SNAPSHOTS = 86400 // POLL_SECONDS
