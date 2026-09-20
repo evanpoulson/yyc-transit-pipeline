@@ -14,18 +14,20 @@ more accurate arrival-time predictor.
 
 ## Architecture (in progress)
 
-- **catcher/** — always-on service polling the GTFS-RT feeds every 20s and
-  writing raw, immutable snapshots to S3.
-- **compactor/** — batch job that rolls a day of raw snapshots into one
+- **catcher/**: always-on service polling the GTFS-RT feeds every 20s and
+  writing raw, immutable snapshots to S3. Never drops a fetched snapshot; a
+  bad payload is retried for a clean copy at capture time and stored anyway if
+  none arrives.
+- **compactor/**: batch job that rolls a day of raw snapshots into one
   sorted, typed Parquet file per feed, with each day's completeness and
   quality metrics stamped into the Parquet footer.
-- **dbt/** — transformations and data-quality tests. *(planned)*
-- **dashboard/** — accuracy report and live map. *(planned)*
-- **infra/** — Terraform for all AWS resources. *(planned)*
+- **dbt/**: transformations and data-quality tests. *(planned)*
+- **dashboard/**: accuracy report and live map. *(planned)*
+- **infra/**: Terraform for all AWS resources. *(planned)*
 
 ## Data flow
 
-GTFS-RT feeds → catcher → S3 (raw) → compactor → S3 (curated) → analysis
+GTFS-RT feeds -> catcher -> S3 (raw) -> compactor -> S3 (curated) -> analysis
 
 ## Status
 
