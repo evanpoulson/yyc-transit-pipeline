@@ -121,18 +121,13 @@ def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -
 
         content = fetch_once(url)
         try:
-            feed = gtfs_realtime_pb2.FeedMessage()
-            feed.ParseFromString(content)  # validation only; raises decode error on bad payload
-            if not feed.IsInitialized(): # also validation only; raises on empty payload
-                raise message.DecodeError(
-                    f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
-                )
-            elif attempt > 1:
+            parse_check(raw=content)
+            if attempt > 1:
                 logging.info(
                     "recovered %s on attempt %d/%d after retry",
                     url, attempt, fetch_max_attempts,
                 )
-        except (requests.RequestException, message.DecodeError) as err:
+        except Exception as err:
             if attempt < fetch_max_attempts:
                 delay = fetch_retry_delay_seconds * attempt
                 logging.warning(
@@ -143,6 +138,13 @@ def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -
 
     return content
 
+def parse_check(raw: bytes) -> None:
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(raw)  # validation only; raises decode error on bad payload
+    if not feed.IsInitialized(): # also validation only; raises on empty payload
+        raise message.DecodeError(
+            f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
+        )
 
 def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
     """Upload a snapshot to S3 under its computed key.
