@@ -88,16 +88,7 @@ def fetch_once(url: str) -> bytes:
 
     response = requests.get(url, timeout=(5, 10))
     response.raise_for_status()
-
-    content = response.content
-    feed = gtfs_realtime_pb2.FeedMessage()
-    feed.ParseFromString(content)  # validation only; raises on bad payload
-    if not feed.IsInitialized():
-        raise message.DecodeError(
-            f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
-        )
-
-    return content
+    return response.content
 
 
 def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -> bytes:
@@ -125,19 +116,23 @@ def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -
             payload that fails to parse as a FeedMessage.
     """
 
-    last_error: Exception | None = None
-
+    content = None
     for attempt in range(1, fetch_max_attempts + 1):
+
+        content = fetch_once(url)
         try:
-            content = fetch_once(url)
-            if attempt > 1:
+            feed = gtfs_realtime_pb2.FeedMessage()
+            feed.ParseFromString(content)  # validation only; raises decode error on bad payload
+            if not feed.IsInitialized(): # also validation only; raises on empty payload
+                raise message.DecodeError(
+                    f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
+                )
+            elif attempt > 1:
                 logging.info(
                     "recovered %s on attempt %d/%d after retry",
                     url, attempt, fetch_max_attempts,
                 )
-            return content
         except (requests.RequestException, message.DecodeError) as err:
-            last_error = err
             if attempt < fetch_max_attempts:
                 delay = fetch_retry_delay_seconds * attempt
                 logging.warning(
@@ -146,7 +141,7 @@ def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -
                 )
                 time.sleep(delay)
 
-    raise last_error
+    return content
 
 
 def store(s3_client, feed_name: str, raw: bytes, ts: datetime) -> str:
