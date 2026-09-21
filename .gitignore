@@ -22,6 +22,10 @@ data/
 .vscode/
 *.log
 
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+
 # Terraform (for later)
 .terraform/
 *.tfstate
