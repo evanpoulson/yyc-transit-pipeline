@@ -15,3 +15,6 @@ Run from the repo root (not from inside this directory):
 ```
 python -m catcher
 ```
+
+Tests are in `tests/catcher/`. Run them from the repo root with `python -m
+pytest`.
