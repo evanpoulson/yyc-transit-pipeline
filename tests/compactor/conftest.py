@@ -16,10 +16,9 @@ import io
 import pytest
 from google.transit import gtfs_realtime_pb2 as pb
 
-from compactor.sub_compactors.vehicle_positions import VehiclePositionsCompactor
-from compactor.sub_compactors.trip_updates import TripUpdatesCompactor
 from compactor.sub_compactors.service_alerts import ServiceAlertsCompactor
-
+from compactor.sub_compactors.trip_updates import TripUpdatesCompactor
+from compactor.sub_compactors.vehicle_positions import VehiclePositionsCompactor
 
 # --- protobuf builders ------------------------------------------------------
 

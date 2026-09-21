@@ -10,19 +10,19 @@ feed name, the PyArrow schema, the sort keys, and `shape_entity`, which turns
 one protobuf entity into one or more flat rows.
 """
 
-from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
-from collections import defaultdict
 import itertools
 import logging
+from abc import ABC, abstractmethod
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 
 import botocore.client
 import botocore.exceptions
 import duckdb
 import pyarrow as pa
-from google.transit import gtfs_realtime_pb2
 from google.protobuf import message
+from google.transit import gtfs_realtime_pb2
 
 import config
 

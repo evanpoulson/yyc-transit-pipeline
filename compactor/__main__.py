@@ -17,14 +17,16 @@ nightly run uses.
 import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import boto3
 import duckdb
 from botocore.config import Config
 
-from compactor.sub_compactors import vehicle_positions, trip_updates, service_alerts
 import config
+from compactor.sub_compactors import service_alerts, trip_updates, vehicle_positions
+
+logger = logging.getLogger(__name__)
 
 # Feed name -> compactor class. Also the source of the --feed CLI choices, so
 # the CLI cannot drift from the set of implemented feeds.
@@ -79,7 +81,7 @@ def main() -> None:
     feed = args.feed
     log_level = args.log_level
 
-    logging.basicConfig(
+    logger.basicConfig(
         level=log_level,
         format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
     )
@@ -88,7 +90,7 @@ def main() -> None:
     # newly-added feed is not silently left uncompacted.
     unhandled = set(config.FEEDS) - set(COMPACTORS)
     if unhandled:
-        logging.warning("Feeds captured but not compacted: %s", sorted(unhandled))
+        logger.warning("Feeds captured but not compacted: %s", sorted(unhandled))
 
     bucket = config.BUCKET
     region = config.REGION
@@ -131,7 +133,7 @@ def main() -> None:
                 try:
                     compactor.run(day)
                 except Exception:
-                    logging.error("Failed to compact %s", feed, exc_info=True)
+                    logger.exception("Failed to compact %s", feed)
 
 
 if __name__ == "__main__":

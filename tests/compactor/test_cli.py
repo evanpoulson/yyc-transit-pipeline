@@ -6,7 +6,7 @@ worth pinning. The COMPACTORS registry must cover every configured feed, or a
 captured feed would be silently left out of the curated layer.
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
