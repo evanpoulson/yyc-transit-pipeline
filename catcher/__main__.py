@@ -22,12 +22,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
-import requests
 import boto3
+import requests
 from google.protobuf import message
 from google.transit import gtfs_realtime_pb2
 
 import config
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -178,9 +180,9 @@ def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -
 
         try:
             content = fetch_once(url)
-        except Exception as err:
+        except Exception as err: # noqa: BLE001 - broad by design; see below
             last_fetch_error = err
-            logging.warning(
+            logger.warning(
                 "attempt %d/%d could not fetch %s (%s: %s)",
                 attempt, fetch_max_attempts, url, type(err).__name__, err,
             )
@@ -190,22 +192,22 @@ def fetch(url: str, fetch_max_attempts: int, fetch_retry_delay_seconds: float) -
 
         try:
             parse_check(raw=content)
-        except Exception as err:
-            logging.warning(
+        except Exception as err: # noqa: BLE001 - broad by design; see below
+            logger.warning(
                 "attempt %d/%d fetched an invalid payload from %s (%s: %s)",
                 attempt, fetch_max_attempts, url, type(err).__name__, err,
             )
             continue
 
         if attempt > 1:
-            logging.info(
+            logger.info(
                 "recovered a valid snapshot for %s on attempt %d/%d",
                 url, attempt, fetch_max_attempts,
             )
         return content
 
     if candidate is not None:
-        logging.warning(
+        logger.warning(
             "no valid snapshot for %s after %d attempts, storing unvalidated bytes",
             url, fetch_max_attempts,
         )
@@ -272,9 +274,9 @@ def poll_once(s3_client, executor: ThreadPoolExecutor, fetch_max_attempts: int, 
         feed_name = futures[future]
         try:
             key = future.result()
-            logging.info("stored %s", key)
-        except Exception as err:
-            logging.error("failed %s, %s", feed_name, err)
+            logger.info("stored %s", key)
+        except Exception as err: # noqa: BLE001 - broad by design; see below
+            logger.error("failed %s, %s", feed_name, err)
 
 
 def main() -> None:
@@ -291,7 +293,7 @@ def main() -> None:
     fetch_retry_delay_seconds = args.retry_delay
     log_level = args.log_level
 
-    logging.basicConfig(
+    logger.basicConfig(
         level=log_level,
         format="%(asctime)s %(levelname)s %(message)s",
     )

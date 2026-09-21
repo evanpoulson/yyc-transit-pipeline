@@ -9,7 +9,7 @@ concurrency path is exercised.
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import timezone
 from unittest.mock import Mock
 
 import config

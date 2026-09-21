@@ -11,8 +11,8 @@ import pyarrow as pa
 import pytest
 
 import config
-from compactor.schemas import SCHEMAS
 from compactor import __main__ as cli
+from compactor.schemas import SCHEMAS
 
 FEEDS = ["vehicle_positions", "trip_updates", "service_alerts"]
 
