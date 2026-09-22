@@ -293,7 +293,7 @@ def main() -> None:
     fetch_retry_delay_seconds = args.retry_delay
     log_level = args.log_level
 
-    logger.basicConfig(
+    logging.basicConfig(
         level=log_level,
         format="%(asctime)s %(levelname)s %(message)s",
     )
