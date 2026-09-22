@@ -81,7 +81,7 @@ def main() -> None:
     feed = args.feed
     log_level = args.log_level
 
-    logger.basicConfig(
+    logging.basicConfig(
         level=log_level,
         format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
     )
