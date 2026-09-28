@@ -20,7 +20,7 @@ class VehiclePositionsCompactor(Compactor):
     schema = SCHEMAS[feed_name]
     sort_keys = ("entity_id", "timestamp")
 
-    def shape_entity(self, entity) -> list[dict]:
+    def shape_entity(self, entity, header_timestamp) -> list[dict]:
         """Return a single-row list for one VehiclePosition entity."""
         v = entity.vehicle
         t = v.trip
@@ -28,6 +28,7 @@ class VehiclePositionsCompactor(Compactor):
         p = v.position
 
         return [{
+            "header_timestamp":      header_timestamp,
             "entity_id":             entity.id or None,
             "trip_id":               t.trip_id if t.HasField("trip_id") else None,
             "route_id":              t.route_id if t.HasField("route_id") else None,
