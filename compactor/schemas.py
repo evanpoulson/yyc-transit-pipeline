@@ -13,6 +13,11 @@ inference would pick:
   cause, effect, severity_level) keep their integer codes. Mapping codes to
   labels is a presentation concern and belongs in dbt, where it is visible,
   testable, and changeable without reprocessing.
+- Every feed carries header_timestamp, the snapshot's FeedHeader timestamp as
+  POSIX seconds (int64, matching arrival_time and departure_time). It is the
+  issue time of every row, and it is a separate column from any entity-level
+  timestamp, which keeps its own meaning (and on trip_updates is never set by
+  Calgary).
 
 Keyed by feed name, matching each Compactor.feed_name and config.FEEDS.
 """

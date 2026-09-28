@@ -27,7 +27,7 @@ def test_shape_keys_match_schema_exactly(feed, helpers):
     cls = helpers.COMPACTOR_CLASSES[feed]
     builder = helpers.BUILDERS[feed]
     c = cls(None, "bucket", None, None)
-    rows = c.shape_entity(builder())
+    rows = c.shape_entity(builder(), helpers.HEADER_TS)
     assert rows
     for row in rows:
         assert set(row.keys()) == set(c.schema.names)
@@ -38,7 +38,7 @@ def test_rows_build_into_the_typed_arrow_table(feed, helpers):
     cls = helpers.COMPACTOR_CLASSES[feed]
     builder = helpers.BUILDERS[feed]
     c = cls(None, "bucket", None, None)
-    rows = c.shape_entity(builder())
+    rows = c.shape_entity(builder(), helpers.HEADER_TS)
     table = pa.Table.from_pylist(rows, schema=c.schema)
     assert table.num_rows == len(rows)
     assert table.schema == c.schema

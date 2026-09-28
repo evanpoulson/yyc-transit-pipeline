@@ -21,7 +21,13 @@ class VehiclePositionsCompactor(Compactor):
     sort_keys = ("entity_id", "timestamp")
 
     def shape_entity(self, entity, header_timestamp) -> list[dict]:
-        """Return a single-row list for one VehiclePosition entity."""
+        """Return a single-row list for one VehiclePosition entity.
+
+        header_timestamp is the snapshot's FeedHeader timestamp, copied onto
+        the row (see Compactor.shape_entity). The vehicle's own `timestamp`
+        stays a separate column: the gap between the two is what exposes a
+        stale vehicle that lingers in the feed.
+        """
         v = entity.vehicle
         t = v.trip
         d = v.vehicle

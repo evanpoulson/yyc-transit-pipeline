@@ -2,8 +2,9 @@
 
 Compacts a day of raw GTFS-RT snapshots into curated Parquet, one file per
 feed. Sets up the resources a run shares — a boto3 S3 client, a DuckDB
-connection with an S3 secret built from the current credentials, and a thread
-pool — then runs either one named feed's compactor or all of them.
+connection with a capped memory limit and an S3 secret resolved through the AWS
+credential chain, and a thread pool — then runs either one named feed's
+compactor or all of them.
 
 Run as a module from the repo root so `config.py` resolves:
 
@@ -70,6 +71,15 @@ def parse_args() -> argparse.Namespace:
         default="INFO",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
     )
+    parser.add_argument(
+        "--memory-limit",
+        default="4GB",
+        help=(
+            "DuckDB memory_limit, e.g. 4GB. DuckDB cannot see the day's Arrow "
+            "table, so this caps its sort and dedupe below the task's memory "
+            "and makes it spill instead. Defaults to 4GB, sized for a 16 GB task."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -80,6 +90,7 @@ def main() -> None:
     day = resolve_target_day(args.day)
     feed = args.feed
     log_level = args.log_level
+    memory_limit = args.memory_limit
 
     logging.basicConfig(
         level=log_level,
@@ -94,7 +105,7 @@ def main() -> None:
 
     bucket = config.BUCKET
     region = config.REGION
-    s3 = boto3.client("s3", region=region, config=Config(max_pool_connections=32))
+    s3 = boto3.client("s3", region_name=region, config=Config(max_pool_connections=32))
 
     # One DuckDB connection and one thread pool for the whole run. The pool is
     # sized to match botocore's connection pool so downloads run concurrently
@@ -103,11 +114,11 @@ def main() -> None:
         db.execute("INSTALL httpfs")
         db.execute("LOAD httpfs")
         db.execute("SET threads TO 4")
-        db.execute("SET memory_limit = '4GB'")
+        db.execute(f"SET memory_limit = '{memory_limit}'")
         db.execute(f"""
             CREATE OR REPLACE SECRET s3_secret (
                 TYPE s3,
-                REGION region,
+                REGION {region},
                 PROVIDER credential_chain,
                 REFRESH auto
             )

@@ -32,7 +32,11 @@ class ServiceAlertsCompactor(Compactor):
         return translated_string.translation[0].text
 
     def shape_entity(self, entity, header_timestamp) -> list[dict]:
-        """Return one row per informed_entity, or one null-entity row if there are none."""
+        """Return one row per informed_entity, or one null-entity row if there are none.
+
+        header_timestamp is the snapshot's FeedHeader timestamp, copied onto
+        every row; see Compactor.shape_entity.
+        """
         a = entity.alert
 
         base = {

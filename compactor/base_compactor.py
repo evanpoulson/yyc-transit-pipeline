@@ -97,6 +97,18 @@ class Compactor(ABC):
         row so it is not dropped. Optional fields are read through HasField on
         their owning message, so an absent field is None rather than the
         protobuf default (an unreported bearing must not read as due north).
+
+        Args:
+            entity: One FeedEntity from a parsed snapshot.
+            header_timestamp: The containing snapshot's FeedHeader timestamp
+                (POSIX seconds, UTC), or None if the header did not set one.
+                Copied onto every row the entity produces. It is the only
+                statement of when a prediction was issued, since Calgary never
+                sets TripUpdate.timestamp, and it is kept separate from any
+                entity-level timestamp so the two are never conflated.
+
+        Returns:
+            One or more row dicts whose keys match the feed's schema.
         """
         ...
 
@@ -208,11 +220,18 @@ class Compactor(ABC):
     def parse_snapshot(self, snapshot: bytes) -> list[dict]:
         """Parse one raw snapshot and flatten its entities into rows.
 
+        The FeedHeader timestamp is read once here and handed to shape_entity,
+        so every row from the snapshot carries it as header_timestamp. It stays
+        None if the header omits it, rather than falling back to the S3 key's
+        capture time, which lags the producer by up to about 40 seconds and
+        would defeat SELECT DISTINCT dedupe of unrefreshed polls.
+
         Args:
             snapshot: Raw protobuf bytes of one FeedMessage.
 
         Returns:
-            The flattened rows from every entity in the snapshot.
+            The flattened rows from every entity in the snapshot, each with
+            header_timestamp set.
 
         Raises:
             google.protobuf.message.DecodeError: If the bytes are not a valid,
@@ -227,7 +246,7 @@ class Compactor(ABC):
             )
 
         raw_ts = None
-        if feed.HasField('header') and feed.header.HasField('timestamp'):
+        if feed.header.HasField("timestamp"):
             raw_ts = feed.header.timestamp
 
         entities = [self.shape_entity(entity, raw_ts) for entity in feed.entity]
