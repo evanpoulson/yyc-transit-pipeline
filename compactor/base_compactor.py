@@ -364,7 +364,7 @@ class Compactor(ABC):
             self.db.execute(
                 f"""
                 COPY (SELECT DISTINCT * FROM df ORDER BY {order_by})
-                TO '{write_path}' (FORMAT parquet, KV_METADATA {{
+                TO '{write_path}' (FORMAT parquet, COMPRESSION zstd, KV_METADATA {{
                     build_ts: '{datetime.now(timezone.utc).isoformat()}',
                     feed_name: '{self.feed_name}',
                     day: '{target_day.strftime("%Y-%m-%d")}',
