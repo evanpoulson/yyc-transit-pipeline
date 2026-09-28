@@ -22,6 +22,11 @@ from compactor.sub_compactors.vehicle_positions import VehiclePositionsCompactor
 
 # --- protobuf builders ------------------------------------------------------
 
+# A FeedHeader timestamp for tests that call shape_entity directly. Distinct from
+# the builders' entity-level timestamps (1_700_000_000), so a test can tell the
+# two apart if one leaks into the other's column.
+HEADER_TS = 1_700_000_050
+
 def a_vehicle_position_entity(entity_id="v1"):
     """A VehiclePosition FeedEntity with every mapped field set."""
     e = pb.FeedEntity()
@@ -110,18 +115,24 @@ def an_alert_entity(entity_id="a1", n_informed=2):
     return e
 
 
-def feed_message(*entities):
-    """Wrap entities in a valid FeedMessage (header set)."""
+def feed_message(*entities, header_timestamp=None):
+    """Wrap entities in a valid FeedMessage (header set).
+
+    header_timestamp sets FeedHeader.timestamp; left None, the header has no
+    timestamp, which is the absent case parse_snapshot must turn into None.
+    """
     fm = pb.FeedMessage()
     fm.header.gtfs_realtime_version = "2.0"
+    if header_timestamp is not None:
+        fm.header.timestamp = header_timestamp
     for entity in entities:
         fm.entity.add().CopyFrom(entity)
     return fm
 
 
-def snapshot_bytes(*entities):
+def snapshot_bytes(*entities, header_timestamp=None):
     """Serialize a FeedMessage of the given entities to wire bytes."""
-    return feed_message(*entities).SerializeToString()
+    return feed_message(*entities, header_timestamp=header_timestamp).SerializeToString()
 
 
 # --- an S3 stand-in ---------------------------------------------------------
@@ -190,6 +201,7 @@ class _Helpers:
     BUILDERS = BUILDERS
     COMPACTOR_CLASSES = COMPACTOR_CLASSES
     FEED_NAMES = FEED_NAMES
+    HEADER_TS = HEADER_TS
 
 
 @pytest.fixture

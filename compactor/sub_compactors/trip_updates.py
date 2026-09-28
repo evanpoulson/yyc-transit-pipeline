@@ -20,7 +20,11 @@ class TripUpdatesCompactor(Compactor):
     sort_keys = ("entity_id", "stop_sequence", "header_timestamp")
 
     def shape_entity(self, entity, header_timestamp) -> list[dict]:
-        """Return one row per stop_time_update, or one null-stop row if there are none."""
+        """Return one row per stop_time_update, or one null-stop row if there are none.
+
+        header_timestamp is the snapshot's FeedHeader timestamp, copied onto
+        every row; see Compactor.shape_entity.
+        """
         tu = entity.trip_update
         t = tu.trip
         d = tu.vehicle
