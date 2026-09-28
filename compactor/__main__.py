@@ -93,14 +93,8 @@ def main() -> None:
         logger.warning("Feeds captured but not compacted: %s", sorted(unhandled))
 
     bucket = config.BUCKET
-    region = config.REGION
 
-    session = boto3.Session()
     s3 = boto3.client("s3", config=Config(max_pool_connections=32))
-
-    # Freeze the current credentials to build the DuckDB S3 secret. Under an
-    # EC2 instance role these are temporary; fine for a single nightly run.
-    creds = session.get_credentials().get_frozen_credentials()
 
     # One DuckDB connection and one thread pool for the whole run. The pool is
     # sized to match botocore's connection pool so downloads run concurrently
@@ -109,17 +103,12 @@ def main() -> None:
         db.execute("INSTALL httpfs")
         db.execute("LOAD httpfs")
         db.execute("SET threads TO 4")
-
-        # Build an S3 secret from the current credentials so DuckDB can write
-        # straight to S3. Include the session token when present (instance role).
-        token_line = f"SESSION_TOKEN '{creds.token}'," if creds.token else ""
+        db.execute("SET memory_limit = '4GB'")
         db.execute(f"""
             CREATE OR REPLACE SECRET s3_secret (
                 TYPE s3,
-                KEY_ID '{creds.access_key}',
-                SECRET '{creds.secret_key}',
-                {token_line}
-                REGION '{region}'
+                PROVIDER credential_chain,
+                REFRESH auto
             )
         """)
 
