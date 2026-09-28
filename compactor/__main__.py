@@ -93,8 +93,8 @@ def main() -> None:
         logger.warning("Feeds captured but not compacted: %s", sorted(unhandled))
 
     bucket = config.BUCKET
-
-    s3 = boto3.client("s3", config=Config(max_pool_connections=32))
+    region = config.REGION
+    s3 = boto3.client("s3", region=region, config=Config(max_pool_connections=32))
 
     # One DuckDB connection and one thread pool for the whole run. The pool is
     # sized to match botocore's connection pool so downloads run concurrently
@@ -107,6 +107,7 @@ def main() -> None:
         db.execute(f"""
             CREATE OR REPLACE SECRET s3_secret (
                 TYPE s3,
+                REGION region,
                 PROVIDER credential_chain,
                 REFRESH auto
             )
