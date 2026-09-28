@@ -1,0 +1,17 @@
+# Exclude everything
+*
+
+# Base requirements
+!config.py
+!requirements.txt
+
+# Compactor
+!compactor/
+compactor/README.md
+compactor/Dockerfile
+
+
+# Never include these anywhere
+**/.DS_Store
+**/__pycache__
+**/*.py[cod]
