@@ -118,7 +118,7 @@ def main() -> None:
         db.execute(f"""
             CREATE OR REPLACE SECRET s3_secret (
                 TYPE s3,
-                REGION {region},
+                REGION '{region}',
                 PROVIDER credential_chain,
                 REFRESH auto
             )
