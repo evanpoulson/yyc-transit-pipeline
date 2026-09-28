@@ -43,6 +43,7 @@ def test_defaults(monkeypatch):
     assert args.day is None
     assert args.feed is None
     assert args.log_level == "INFO"
+    assert args.memory_limit == "4GB"
 
 
 def test_invalid_feed_is_rejected(monkeypatch):
@@ -55,3 +56,8 @@ def test_invalid_day_is_rejected(monkeypatch):
     monkeypatch.setattr("sys.argv", ["compactor", "--day", "09-03-2026"])
     with pytest.raises(SystemExit):
         cli.parse_args()
+
+
+def test_memory_limit_is_configurable(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["compactor", "--memory-limit", "6GB"])
+    assert cli.parse_args().memory_limit == "6GB"

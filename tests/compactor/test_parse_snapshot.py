@@ -41,3 +41,33 @@ def test_incomplete_message_raises(vp_compactor):
     # initialized and is rejected, matching a truncated capture.
     with pytest.raises(message.DecodeError):
         vp_compactor.parse_snapshot(b"")
+
+
+@pytest.mark.parametrize("feed", ["vehicle_positions", "trip_updates", "service_alerts"])
+def test_header_timestamp_rides_on_every_row(feed, helpers):
+    # Two entities, and for trip_updates and service_alerts each explodes into
+    # several rows; every one of them must carry the snapshot's header time.
+    c = helpers.COMPACTOR_CLASSES[feed](None, "test-bucket", None, None)
+    build = helpers.BUILDERS[feed]
+    raw = helpers.snapshot_bytes(build("e1"), build("e2"), header_timestamp=helpers.HEADER_TS)
+    rows = c.parse_snapshot(raw)
+    assert len(rows) >= 2
+    assert {r["header_timestamp"] for r in rows} == {helpers.HEADER_TS}
+
+
+def test_header_without_a_timestamp_gives_none(tu_compactor, helpers):
+    # The header is required, but its timestamp is optional. An unset one must
+    # stay None, not become protobuf's default of 0 (the Unix epoch).
+    raw = helpers.snapshot_bytes(helpers.a_trip_update_entity("t1", n_stops=2))
+    rows = tu_compactor.parse_snapshot(raw)
+    assert [r["header_timestamp"] for r in rows] == [None, None]
+
+
+def test_header_timestamp_is_not_the_entity_timestamp(tu_compactor, helpers):
+    # The builder sets TripUpdate.timestamp to 1_700_000_000. The header's value
+    # goes to header_timestamp and the entity's stays in timestamp.
+    raw = helpers.snapshot_bytes(helpers.a_trip_update_entity("t1", n_stops=1),
+                                 header_timestamp=helpers.HEADER_TS)
+    r = tu_compactor.parse_snapshot(raw)[0]
+    assert r["header_timestamp"] == helpers.HEADER_TS
+    assert r["timestamp"] == 1_700_000_000
