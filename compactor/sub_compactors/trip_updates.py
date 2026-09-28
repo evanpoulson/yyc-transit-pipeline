@@ -17,15 +17,16 @@ class TripUpdatesCompactor(Compactor):
 
     feed_name = "trip_updates"
     schema = SCHEMAS[feed_name]
-    sort_keys = ("entity_id", "stop_sequence", "timestamp")
+    sort_keys = ("entity_id", "stop_sequence", "header_timestamp")
 
-    def shape_entity(self, entity) -> list[dict]:
+    def shape_entity(self, entity, header_timestamp) -> list[dict]:
         """Return one row per stop_time_update, or one null-stop row if there are none."""
         tu = entity.trip_update
         t = tu.trip
         d = tu.vehicle
 
         base = {
+            "header_timestamp":      header_timestamp,
             "entity_id":             entity.id or None,
             "trip_id":               t.trip_id if t.HasField("trip_id") else None,
             "route_id":              t.route_id if t.HasField("route_id") else None,

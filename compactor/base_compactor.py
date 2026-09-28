@@ -88,7 +88,7 @@ class Compactor(ABC):
         self.parse_failed = 0
 
     @abstractmethod
-    def shape_entity(self, entity: gtfs_realtime_pb2.FeedEntity) -> list[dict]:
+    def shape_entity(self, entity: gtfs_realtime_pb2.FeedEntity, header_timestamp: int | None) -> list[dict]:
         """Flatten one protobuf entity into a list of curated row dicts.
 
         Returns a list because the row grain is the leaf, not the entity: a
@@ -226,7 +226,11 @@ class Compactor(ABC):
                 f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
             )
 
-        entities = [self.shape_entity(entity) for entity in feed.entity]
+        raw_ts = None
+        if feed.HasField('header') and feed.header.HasField('timestamp'):
+            raw_ts = feed.header.timestamp
+
+        entities = [self.shape_entity(entity, raw_ts) for entity in feed.entity]
         return list(itertools.chain.from_iterable(entities))
 
     def fetch_rows(self, paths: list[str]) -> list[dict]:

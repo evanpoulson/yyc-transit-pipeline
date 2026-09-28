@@ -15,7 +15,7 @@ class ServiceAlertsCompactor(Compactor):
 
     feed_name = "service_alerts"
     schema = SCHEMAS[feed_name]
-    sort_keys = ("route_id", "entity_id")
+    sort_keys = ("route_id", "entity_id", "header_timestamp")
 
     @staticmethod
     def _first_text(translated_string) -> str | None:
@@ -31,11 +31,12 @@ class ServiceAlertsCompactor(Compactor):
                 return t.text
         return translated_string.translation[0].text
 
-    def shape_entity(self, entity) -> list[dict]:
+    def shape_entity(self, entity, header_timestamp) -> list[dict]:
         """Return one row per informed_entity, or one null-entity row if there are none."""
         a = entity.alert
 
         base = {
+            "header_timestamp": header_timestamp,
             "entity_id":        entity.id or None,
             "cause":            a.cause if a.HasField("cause") else None,
             "effect":           a.effect if a.HasField("effect") else None,
