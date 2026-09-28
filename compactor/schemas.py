@@ -21,7 +21,7 @@ import pyarrow as pa
 
 SCHEMAS = {
     "vehicle_positions": pa.schema([
-        ("header_timestamp", pa.int64())
+        ("header_timestamp", pa.int64()),
         ("entity_id", pa.string()),
         ("trip_id", pa.string()),
         ("route_id", pa.string()),
@@ -53,7 +53,7 @@ SCHEMAS = {
             ]))),
         ]),
     "trip_updates": pa.schema([
-        ("header_timestamp", pa.int64())
+        ("header_timestamp", pa.int64()),
         ("entity_id", pa.string()),
         ("trip_id", pa.string()),
         ("route_id", pa.string()),
@@ -75,7 +75,7 @@ SCHEMAS = {
         ("stop_schedule_relationship", pa.int64()),
     ]),
     "service_alerts": pa.schema([
-        ("header_timestamp", pa.int64())
+        ("header_timestamp", pa.int64()),
         ("entity_id", pa.string()),
         ("cause", pa.int64()),
         ("effect", pa.int64()),
