@@ -7,13 +7,13 @@ an empty page with no Contents.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from compactor.sub_compactors.vehicle_positions import VehiclePositionsCompactor
 
-DAY = datetime(2026, 3, 9, tzinfo=timezone.utc)
+DAY = datetime(2026, 3, 9, tzinfo=UTC)
 
 
 def test_get_object_paths_collects_keys_and_skips_empty_pages(helpers):

@@ -1,0 +1,13 @@
+[project]
+name = "catcher"
+version = "0.1.0"
+description = "Polls the Calgary Transit GTFS-RT feeds and stores raw snapshots in S3"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32",
+    "boto3>=1.34",
+    "gtfs-realtime-bindings>=1.0",
+]
+
+[tool.uv]
+package = false

@@ -18,7 +18,7 @@ nightly run uses.
 import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import boto3
 import duckdb
@@ -40,12 +40,12 @@ COMPACTORS = {
 
 def parse_day(value: str) -> datetime:
     """Parse a YYYY-MM-DD CLI value into a UTC-aware datetime."""
-    return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
 
 
 def resolve_target_day(day: datetime | None = None) -> datetime:
     """Return the day to compact, defaulting to yesterday (UTC) when none is given."""
-    return day or datetime.now(timezone.utc) - timedelta(days=1)
+    return day or datetime.now(UTC) - timedelta(days=1)
 
 
 def parse_args() -> argparse.Namespace:

@@ -1,0 +1,18 @@
+[project]
+name = "yyc-transit-pipeline"
+version = "0.1.0"
+description = "Calgary Transit GTFS-RT pipeline"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff==0.16.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["catcher", "compactor"]
