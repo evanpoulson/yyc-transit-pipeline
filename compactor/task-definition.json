@@ -1,0 +1,30 @@
+{
+    "containerDefinitions": [
+        {
+            "name": "compactor",
+            "image": "860574615377.dkr.ecr.ca-central-1.amazonaws.com/yyc-transit/compactor:2f999fa",
+            "essential": true,
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/yyc-transit/compactor",
+                    "awslogs-region": "ca-central-1",
+                    "awslogs-stream-prefix": "compactor"
+                }
+            }
+        }
+    ],
+    "family": "yyc-transit-compactor",
+    "taskRoleArn": "arn:aws:iam::860574615377:role/yyc-transit-compactor-runner",
+    "executionRoleArn": "arn:aws:iam::860574615377:role/yyc-transit-compactor-executor",
+    "networkMode": "awsvpc",
+    "runtimePlatform": {
+        "cpuArchitecture": "ARM64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "8192",
+    "memory": "61440"
+}
