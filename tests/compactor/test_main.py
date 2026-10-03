@@ -10,7 +10,7 @@ there fails here rather than on the first nightly run.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -76,7 +76,7 @@ def run_main(monkeypatch):
 
 def test_main_runs_every_feed_for_the_given_day(run_main):
     _, calls = run_main(["--day", "2026-09-21"])
-    day = datetime(2026, 9, 21, tzinfo=timezone.utc)
+    day = datetime(2026, 9, 21, tzinfo=UTC)
     assert sorted(name for name, _, _ in calls) == sorted(config.FEEDS)
     assert all(d == day and bucket == config.BUCKET for _, d, bucket in calls)
 

@@ -15,7 +15,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import botocore.client
 import botocore.exceptions
@@ -365,7 +365,7 @@ class Compactor(ABC):
                 f"""
                 COPY (SELECT DISTINCT * FROM df ORDER BY {order_by})
                 TO '{write_path}' (FORMAT parquet, COMPRESSION zstd, KV_METADATA {{
-                    build_ts: '{datetime.now(timezone.utc).isoformat()}',
+                    build_ts: '{datetime.now(UTC).isoformat()}',
                     feed_name: '{self.feed_name}',
                     day: '{target_day.strftime("%Y-%m-%d")}',
                     expected: '{self.expected}',

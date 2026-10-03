@@ -5,7 +5,7 @@ the bytes store writes, and the store's key must propagate back so poll_once can
 log it. This one test guards that composition.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import Mock
 
 from catcher import __main__ as catcher
@@ -17,7 +17,7 @@ def test_pipes_fetched_bytes_into_store(monkeypatch):
     monkeypatch.setattr(catcher, "fetch", fetch_mock)
     monkeypatch.setattr(catcher, "store", store_mock)
     s3 = Mock()
-    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
 
     result = catcher.fetch_and_store(s3, "vehicle_positions", "http://feed", 3, 0.6, ts)
 

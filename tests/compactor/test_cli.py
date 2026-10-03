@@ -6,7 +6,7 @@ worth pinning. The COMPACTORS registry must cover every configured feed, or a
 captured feed would be silently left out of the curated layer.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -17,18 +17,18 @@ from compactor import __main__ as cli
 def test_parse_day_returns_utc():
     d = cli.parse_day("2026-03-09")
     assert (d.year, d.month, d.day) == (2026, 3, 9)
-    assert d.tzinfo == timezone.utc
+    assert d.tzinfo == UTC
 
 
 def test_resolve_target_day_defaults_to_yesterday():
     d = cli.resolve_target_day(None)
-    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+    yesterday = (datetime.now(UTC) - timedelta(days=1)).date()
     assert d.date() == yesterday
-    assert d.tzinfo == timezone.utc
+    assert d.tzinfo == UTC
 
 
 def test_resolve_target_day_passes_through_a_given_day():
-    given = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    given = datetime(2026, 1, 1, tzinfo=UTC)
     assert cli.resolve_target_day(given) is given
 
 

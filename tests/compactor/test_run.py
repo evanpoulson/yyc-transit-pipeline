@@ -5,13 +5,13 @@ curated file when the day is empty, so a bad run never overwrites a good
 partition. The write itself goes to S3 through DuckDB, so it is stubbed here.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from compactor.sub_compactors.vehicle_positions import VehiclePositionsCompactor
 
-DAY = datetime(2026, 3, 9, tzinfo=timezone.utc)
+DAY = datetime(2026, 3, 9, tzinfo=UTC)
 
 
 class _BadSortKeys(VehiclePositionsCompactor):

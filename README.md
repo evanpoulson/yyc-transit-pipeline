@@ -55,8 +55,8 @@ Tests live under `tests/`, one folder per component. Install the dev
 dependencies and run the suite from the repo root:
 
 ```
-pip install -r requirements-dev.txt
-python -m pytest
+uv sync --all-packages
+uv run pytest
 ```
 
 The catcher suite is complete; compactor tests are next. See `tests/README.md`
