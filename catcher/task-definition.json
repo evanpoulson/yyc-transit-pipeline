@@ -1,0 +1,31 @@
+{
+    "containerDefinitions": [
+        {
+            "name": "catcher",
+            "image": "860574615377.dkr.ecr.ca-central-1.amazonaws.com/yyc-transit/catcher:placeholder",
+            "command": ["--retry-delay", "1"],
+            "essential": true,
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/yyc-transit/catcher",
+                    "awslogs-region": "ca-central-1",
+                    "awslogs-stream-prefix": "catcher"
+                }
+            }
+        }
+    ],
+    "family": "yyc-transit-catcher",
+    "taskRoleArn": "arn:aws:iam::860574615377:role/yyc-transit-catcher-runner",
+    "executionRoleArn": "arn:aws:iam::860574615377:role/yyc-transit-ecs-executor",
+    "networkMode": "awsvpc",
+    "runtimePlatform": {
+        "cpuArchitecture": "ARM64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512"
+}
