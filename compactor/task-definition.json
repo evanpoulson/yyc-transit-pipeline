@@ -16,7 +16,7 @@
     ],
     "family": "yyc-transit-compactor",
     "taskRoleArn": "arn:aws:iam::860574615377:role/yyc-transit-compactor-runner",
-    "executionRoleArn": "arn:aws:iam::860574615377:role/yyc-transit-compactor-executor",
+    "executionRoleArn": "arn:aws:iam::860574615377:role/yyc-transit-ecs-executor",
     "networkMode": "awsvpc",
     "runtimePlatform": {
         "cpuArchitecture": "ARM64",
