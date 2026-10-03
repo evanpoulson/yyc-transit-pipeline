@@ -1,0 +1,115 @@
+name: yyc-transit-compactor-deploy CD
+
+on:
+    push:
+        branches: [ "main" ]
+        paths: [ "compactor/**", "config.py", "pyproject.toml", "uv.lock", ".github/workflows/deploy-compactor.yml" ]
+    workflow_dispatch:
+
+concurrency:
+    group: deploy-compactor
+    cancel-in-progress: false
+
+permissions:
+    id-token: write # OIDC token for assuming the AWS role
+    contents: read
+
+env:
+    AWS_REGION: ca-central-1
+    ECR_REPOSITORY: yyc-transit/compactor
+    TASK_DEFINITION: compactor/task-definition.json
+    CONTAINER_NAME: compactor
+    SCHEDULE_GROUP: yyc-transit
+    SCHEDULE_NAME: yyc-transit-compaction-schedule
+
+jobs:
+    deploy:
+        # Native ARM runner, so the image matches the task's ARM64 runtime platform without QEMU.
+        runs-on: ubuntu-24.04-arm
+
+        steps:
+        - uses: actions/checkout@v4
+
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+            role-to-assume: arn:aws:iam::860574615377:role/yyc-transit-github-deploy
+            aws-region: ${{ env.AWS_REGION }}
+
+        - name: Log in to Amazon ECR
+          id: ecr
+          uses: aws-actions/amazon-ecr-login@v2
+
+        # Tags are immutable in ECR, so a re-run for a commit whose image was
+        # already pushed skips the build instead of failing on the push.
+        - name: Check for an existing image
+          id: image
+          env:
+            REGISTRY: ${{ steps.ecr.outputs.registry }}
+          run: |
+            TAG="${GITHUB_SHA::7}"
+            echo "image=$REGISTRY/$ECR_REPOSITORY:$TAG" >> "$GITHUB_OUTPUT"
+            if out=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" 2>&1); then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              echo "Image $TAG already in ECR, skipping the build"
+            elif grep -q ImageNotFoundException <<< "$out"; then
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "$out"
+              exit 1
+            fi
+
+        - name: Build and push image
+          if: steps.image.outputs.exists == 'false'
+          env:
+            IMAGE: ${{ steps.image.outputs.image }}
+          run: |
+            docker build --platform linux/arm64 -f compactor/Dockerfile -t "$IMAGE" .
+            docker push "$IMAGE"
+
+        - name: Render task definition with new image
+          id: render
+          uses: aws-actions/amazon-ecs-render-task-definition@v1
+          with:
+            task-definition: ${{ env.TASK_DEFINITION }}
+            container-name: ${{ env.CONTAINER_NAME }}
+            image: ${{ steps.image.outputs.image }}
+
+        # No service or cluster: the compactor is a scheduled task, so this only
+        # registers a new revision of the task definition family.
+        - name: Register task definition
+          id: register
+          uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+          with:
+            task-definition: ${{ steps.render.outputs.task-definition }}
+
+        # update-schedule replaces the whole schedule, so read it, change only the
+        # task definition revision, drop the read-only fields, and send it all back.
+        - name: Point the schedule at the new revision
+          env:
+            TASK_DEF_ARN: ${{ steps.register.outputs.task-definition-arn }}
+          run: |
+            aws scheduler get-schedule --group-name "$SCHEDULE_GROUP" --name "$SCHEDULE_NAME" > schedule.json
+            jq --arg arn "$TASK_DEF_ARN" \
+              '.Target.EcsParameters.TaskDefinitionArn = $arn | del(.Arn, .CreationDate, .LastModificationDate)' \
+              schedule.json > update.json
+            aws scheduler update-schedule --cli-input-json file://update.json
+
+        - name: Verify the schedule and image
+          env:
+            TASK_DEF_ARN: ${{ steps.register.outputs.task-definition-arn }}
+            IMAGE: ${{ steps.image.outputs.image }}
+          run: |
+            scheduled=$(aws scheduler get-schedule --group-name "$SCHEDULE_GROUP" --name "$SCHEDULE_NAME" \
+              --query Target.EcsParameters.TaskDefinitionArn --output text)
+            if [ "$scheduled" != "$TASK_DEF_ARN" ]; then
+              echo "::error::Schedule points at $scheduled, expected $TASK_DEF_ARN"
+              exit 1
+            fi
+            registered=$(aws ecs describe-task-definition --task-definition "$TASK_DEF_ARN" \
+              --query 'taskDefinition.containerDefinitions[0].image' --output text)
+            if [ "$registered" != "$IMAGE" ]; then
+              echo "::error::Revision runs $registered, expected $IMAGE"
+              exit 1
+            fi
+            echo "Schedule now runs $TASK_DEF_ARN with $IMAGE"
