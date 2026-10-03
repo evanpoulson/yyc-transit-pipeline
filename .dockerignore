@@ -5,7 +5,11 @@
 !config.py
 !pyproject.toml
 !uv.lock
-!catcher/pyproject.toml
+
+# Catcher
+!catcher/
+catcher/README.md
+catcher/Dockerfile
 
 # Compactor
 !compactor/
