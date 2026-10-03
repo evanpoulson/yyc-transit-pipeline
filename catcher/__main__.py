@@ -20,7 +20,7 @@ import argparse
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import boto3
 import requests
@@ -263,7 +263,7 @@ def poll_once(s3_client, executor: ThreadPoolExecutor, fetch_max_attempts: int, 
         executor: Shared thread pool the fetches run on.
     """
 
-    ts = datetime.now(timezone.utc)
+    ts = datetime.now(UTC)
 
     futures = {
         executor.submit(fetch_and_store, s3_client, feed_name=feed_name, url=url, fetch_max_attempts=fetch_max_attempts, fetch_retry_delay_seconds=fetch_retry_delay_seconds, ts=ts): feed_name
@@ -298,7 +298,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    s3 = boto3.client("s3")
+    region = config.REGION
+    s3 = boto3.client("s3", region_name=region)
 
     with ThreadPoolExecutor(max_workers=len(config.FEEDS)) as executor:
         while True:

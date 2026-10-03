@@ -12,12 +12,12 @@ tests/
 Run from the repo root:
 
 ```
-python -m pytest
+uv run pytest
 ```
 
 `pytest.ini` puts the repo root on the path, so tests import `catcher`,
-`compactor`, and `config` exactly as the services do at runtime. Install the
-dev dependencies first with `pip install -r requirements-dev.txt`.
+`compactor`, and `config` exactly as the services do at runtime. Install every
+member's dependencies plus the dev group first with `uv sync --all-packages`.
 
 The catcher tests build real GTFS-RT payloads and drive the fetch loop with a
 mocked `fetch_once`, so the retry, passthrough, and logging behaviour is

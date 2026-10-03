@@ -9,7 +9,7 @@ concurrency path is exercised.
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timezone
+from datetime import UTC
 from unittest.mock import Mock
 
 import config
@@ -58,7 +58,7 @@ def test_one_timestamp_is_shared_across_all_feeds(monkeypatch):
     timestamps = set(seen.values())
     assert len(timestamps) == 1                    # one now() per cycle, not one per feed
     only_ts = next(iter(timestamps))
-    assert only_ts.tzinfo == timezone.utc          # and it is timezone-aware UTC
+    assert only_ts.tzinfo == UTC          # and it is timezone-aware UTC
 
 
 def test_a_failing_feed_is_isolated(monkeypatch, caplog):

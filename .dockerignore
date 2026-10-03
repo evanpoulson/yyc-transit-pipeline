@@ -3,7 +3,9 @@
 
 # Base requirements
 !config.py
-!requirements.txt
+!pyproject.toml
+!uv.lock
+!catcher/pyproject.toml
 
 # Compactor
 !compactor/

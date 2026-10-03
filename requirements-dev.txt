@@ -1,6 +1,0 @@
-# Development and CI dependencies, kept out of requirements.txt so the
-# production catcher install on the box stays lean.
--r requirements.txt
-
-pytest>=8
-ruff==0.16.8

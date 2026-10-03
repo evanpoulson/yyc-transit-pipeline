@@ -6,13 +6,13 @@ catcher writes. validate_sort_keys is the cheap guard that fails a typo before
 a whole day is downloaded.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from compactor.sub_compactors.vehicle_positions import VehiclePositionsCompactor
 
-DAY = datetime(2026, 3, 9, tzinfo=timezone.utc)
+DAY = datetime(2026, 3, 9, tzinfo=UTC)
 
 
 def test_build_prefix_raw(vp_compactor):
