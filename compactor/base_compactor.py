@@ -2,10 +2,11 @@
 
 One `Compactor` subclass exists per feed. The base class owns everything that
 is identical across feeds: listing and downloading a day's raw snapshots from
-S3, parsing and flattening them concurrently, batching by hour to bound memory,
-accounting for download and parse failures, and writing one sorted,
-deduplicated, typed Parquet file for the day with its completeness and quality
-metrics stamped into the footer. A subclass supplies only what differs: the
+S3, parsing and flattening them concurrently, spilling each hour to a local
+Parquet file to bound memory, accounting for download and parse failures, and
+merging the hourly files with DuckDB into one sorted, deduplicated, typed
+Parquet file for the day with its completeness and quality metrics stamped
+into the footer. A subclass supplies only what differs: the
 feed name, the PyArrow schema, the sort keys, and `shape_entity`, which turns
 one protobuf entity into one or more flat rows.
 """
@@ -362,21 +363,23 @@ class Compactor(ABC):
             logger.info("%s: hour %s produced %d rows", self.feed_name, hour, len(rows))
 
 
-    #TODO: this function needs to be updated to read from all the hourly parquet files from /tmp
     def write_curated(self, target_day: datetime) -> None:
-        """Write the day's table to S3 as one sorted, deduplicated Parquet file.
+        """Merge the day's hourly files into one sorted, deduplicated Parquet file on S3.
 
-        DuckDB writes straight to S3 through httpfs. Rows are deduplicated with
-        SELECT DISTINCT (consecutive polls of an unrefreshed feed produce
-        genuinely identical rows) and sorted by the feed's sort keys, which is
-        free while DuckDB is already sorting and improves Parquet compression
-        and row-group skipping. The run's completeness and quality metrics are
-        embedded in the Parquet footer as key-value metadata, so each file is
+        DuckDB reads every hourly file that write_hour left under
+        /tmp/<feed_name>/ as one table and writes straight to S3 through
+        httpfs. Because DuckDB streams the files itself rather than being
+        handed an in-memory table, its memory_limit covers the whole sort and
+        dedupe, and it spills to disk instead of running out of memory.
+
+        Rows are deduplicated across the whole day with SELECT DISTINCT
+        (consecutive polls of an unrefreshed feed produce genuinely identical
+        rows) and sorted by the feed's sort keys, which is free while DuckDB is
+        already sorting and improves Parquet compression and row-group
+        skipping. The run's completeness and quality metrics are embedded in
+        the Parquet footer as key-value metadata, so each file is
         self-describing: they are read back with parquet_kv_metadata and cannot
         drift from the data they describe.
-
-        The input is the hourly Parquet files that write_hour leaves under
-        /tmp/<feed_name>/.
 
         Args:
             target_day: The day being written, used for the partition path.
@@ -384,30 +387,25 @@ class Compactor(ABC):
         order_by = ", ".join(self.sort_keys)
         key = self.build_prefix(layer="curated", feed=self.feed_name, target_day=target_day)
         write_path = f"s3://{self.bucket}/{key}"
+        hourly_files = f"/tmp/{self.feed_name}/*.parquet"
 
-        # DuckDB reads the table through a registered view; the name here must
-        # match the one used in the FROM clause below.
-        self.db.register("df", df)
-        try:
-            self.db.execute(
-                f"""
-                COPY (SELECT DISTINCT * FROM df ORDER BY {order_by})
-                TO '{write_path}' (FORMAT parquet, COMPRESSION zstd, KV_METADATA {{
-                    build_ts: '{datetime.now(UTC).isoformat()}',
-                    feed_name: '{self.feed_name}',
-                    day: '{target_day.strftime("%Y-%m-%d")}',
-                    expected: '{self.expected}',
-                    discovered: '{self.discovered}',
-                    succeeded: '{self.succeeded}',
-                    download_failed: '{self.download_failed}',
-                    parse_failed: '{self.parse_failed}',
-                    coverage: '{self.coverage:.4f}',
-                    failure_rate: '{self.failure_rate:.4f}'
-                }});
-                """
-            )
-        finally:
-            self.db.unregister("df")
+        self.db.execute(
+            f"""
+            COPY (SELECT DISTINCT * FROM read_parquet('{hourly_files}') ORDER BY {order_by})
+            TO '{write_path}' (FORMAT parquet, COMPRESSION zstd, KV_METADATA {{
+                build_ts: '{datetime.now(UTC).isoformat()}',
+                feed_name: '{self.feed_name}',
+                day: '{target_day.strftime("%Y-%m-%d")}',
+                expected: '{self.expected}',
+                discovered: '{self.discovered}',
+                succeeded: '{self.succeeded}',
+                download_failed: '{self.download_failed}',
+                parse_failed: '{self.parse_failed}',
+                coverage: '{self.coverage:.4f}',
+                failure_rate: '{self.failure_rate:.4f}'
+            }});
+            """
+        )
 
         logger.info("%s: wrote %s", self.feed_name, write_path)
 
