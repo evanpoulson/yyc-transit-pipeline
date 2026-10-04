@@ -59,7 +59,7 @@ def test_parse_failure_is_counted_and_isolated(helpers):
 
 
 def test_discovered_accumulates_across_hourly_batches(helpers):
-    # create_table calls fetch_rows once per hour, so discovered must add up.
+    # write_hour calls fetch_rows once per hour, so discovered must add up.
     objects = {"k1": _good(helpers, "v1"), "k2": _good(helpers, "v2")}
     with ThreadPoolExecutor(max_workers=2) as ex:
         c = VehiclePositionsCompactor(helpers.FakeS3(objects), "bucket", ex, None)
