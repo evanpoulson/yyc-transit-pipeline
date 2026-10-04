@@ -75,9 +75,9 @@ def parse_args() -> argparse.Namespace:
         "--memory-limit",
         default="4GB",
         help=(
-            "DuckDB memory_limit, e.g. 4GB. DuckDB cannot see the day's Arrow "
-            "table, so this caps its sort and dedupe below the task's memory "
-            "and makes it spill instead. Defaults to 4GB, sized for a 16 GB task."
+            "DuckDB memory_limit, e.g. 4GB. Caps the sort and dedupe over the "
+            "day's hourly Parquet files below the task's memory, so DuckDB "
+            "spills to disk instead. Defaults to 4GB."
         ),
     )
     return parser.parse_args()
