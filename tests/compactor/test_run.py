@@ -2,7 +2,8 @@
 
 run must validate the sort keys before any downloading, and must not write a
 curated file when the day is empty, so a bad run never overwrites a good
-partition. The write itself goes to S3 through DuckDB, so it is stubbed here.
+partition. Both steps are stubbed here; test_write_hours and
+test_write_curated cover them.
 """
 
 from datetime import UTC, datetime
@@ -23,27 +24,27 @@ def test_run_executes_the_pipeline_in_order(monkeypatch, vp_compactor):
     monkeypatch.setattr(vp_compactor, "validate_sort_keys", lambda: calls.append("validate"))
     monkeypatch.setattr(vp_compactor, "reset_counters", lambda: calls.append("reset"))
 
-    def fake_write_hour(day):
-        calls.append("write_hour")
+    def fake_write_hours(day):
+        calls.append("write_hours")
 
     def fake_write(day):
         calls.append("write")
 
-    monkeypatch.setattr(vp_compactor, "write_hour", fake_write_hour)
+    monkeypatch.setattr(vp_compactor, "write_hours", fake_write_hours)
     monkeypatch.setattr(vp_compactor, "write_curated", fake_write)
 
     vp_compactor.run(DAY)
-    assert calls == ["validate", "reset", "write_hour", "write"]
+    assert calls == ["validate", "reset", "write_hours", "write"]
 
 
 def test_run_does_not_write_when_the_day_is_empty(monkeypatch, vp_compactor):
     monkeypatch.setattr(vp_compactor, "validate_sort_keys", lambda: None)
 
-    def fake_write_hour(day):
+    def fake_write_hours(day):
         raise RuntimeError("no raw snapshots found")
 
     wrote = []
-    monkeypatch.setattr(vp_compactor, "write_hour", fake_write_hour)
+    monkeypatch.setattr(vp_compactor, "write_hours", fake_write_hours)
     monkeypatch.setattr(vp_compactor, "write_curated", lambda day: wrote.append(1))
 
     with pytest.raises(RuntimeError):
@@ -54,7 +55,7 @@ def test_run_does_not_write_when_the_day_is_empty(monkeypatch, vp_compactor):
 def test_run_validates_before_any_fetching(monkeypatch):
     c = _BadSortKeys(None, "bucket", None, None)
     fetched = []
-    monkeypatch.setattr(c, "write_hour", lambda day: fetched.append(1))
+    monkeypatch.setattr(c, "write_hours", lambda day: fetched.append(1))
     with pytest.raises(RuntimeError):
         c.run(DAY)
     assert fetched == []   # a bad sort key stops the run before downloading
