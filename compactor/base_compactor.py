@@ -292,7 +292,7 @@ class Compactor(ABC):
                 data = self.parse_snapshot(blob)
             except Exception:
                 self.parse_failed += 1
-                logger.warning("%s: parse failed for %s", self.feed_name, object_key, exc_info=True)
+                logger.debug("%s: parse failed for %s", self.feed_name, object_key)
                 continue
 
             rows.extend(data)
@@ -312,14 +312,19 @@ class Compactor(ABC):
         under /tmp/<feed_name>/, so nothing accumulates in memory across hours.
         write_curated then reads those files to build the day's curated file.
 
+        An hour that yields no rows writes no file and is skipped. That covers
+        both a quiet hour (a service_alerts snapshot with no active alerts
+        parses to zero rows) and an hour where every snapshot failed, whose
+        failures are already counted into failure_rate. Skipping rather than
+        raising keeps the rule that a degraded day is labelled, not blocked.
+
         Args:
             target_day: The day to compact.
 
         Raises:
-            RuntimeError: If no raw snapshots were found for the day, or an
-                hour yields no rows (every snapshot in it failed to download or
-                parse), so a broken or empty run fails loudly rather than
-                overwriting a good partition with an empty or incomplete file.
+            RuntimeError: If no raw snapshots were found for the day, so an
+                empty run fails loudly rather than overwriting a good partition
+                with an empty file.
         """
 
         paths = self.get_object_paths(target_day)
