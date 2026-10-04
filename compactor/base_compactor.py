@@ -46,13 +46,11 @@ class Compactor(ABC):
         parse_failed:    snapshots fetched but not parseable as a FeedMessage.
     """
 
-
     @property
     @abstractmethod
     def feed_name(self) -> str:
         """Short feed identifier, matching config.FEEDS and the S3 key prefix."""
         ...
-
 
     @property
     @abstractmethod
@@ -60,13 +58,11 @@ class Compactor(ABC):
         """PyArrow schema for this feed's curated rows."""
         ...
 
-
     @property
     @abstractmethod
     def sort_keys(self) -> tuple[str, ...]:
         """Columns to sort the curated file by, for compression and row-group skipping."""
         ...
-
 
     def __init__(
         self,
@@ -94,7 +90,6 @@ class Compactor(ABC):
         self.download_failed = 0
         self.parse_failed = 0
 
-
     @abstractmethod
     def shape_entity(self, entity: gtfs_realtime_pb2.FeedEntity, header_timestamp: int | None) -> list[dict]:
         """Flatten one protobuf entity into a list of curated row dicts.
@@ -120,7 +115,6 @@ class Compactor(ABC):
         """
         ...
 
-
     def reset_counters(self) -> None:
         """Zero the per-run counters. Called at the start of each run."""
         self.discovered = 0
@@ -128,12 +122,10 @@ class Compactor(ABC):
         self.download_failed = 0
         self.parse_failed = 0
 
-
     @property
     def failed(self) -> int:
         """Total failed snapshots, download plus parse."""
         return self.download_failed + self.parse_failed
-
 
     @property
     def failure_rate(self) -> float:
@@ -142,14 +134,12 @@ class Compactor(ABC):
             return 0.0
         return self.failed / self.discovered
 
-
     @property
     def coverage(self) -> float:
         """Fraction of the day's expected snapshots that were discovered, in [0, 1]."""
         if self.discovered == 0:
             return 0.0
         return self.discovered / self.expected
-
 
     def build_prefix(self, layer: str, feed: str, target_day: datetime) -> str:
         """Build the S3 key prefix (raw) or full object key (curated) for a feed and day.
@@ -170,7 +160,6 @@ class Compactor(ABC):
             day = target_day.strftime("%Y-%m-%d")
             return f"curated/{feed}/date={day}/data.parquet"
 
-
     def group_by_hour(self, paths: list[str]) -> dict[str, list[str]]:
         """Group raw object keys by their hour prefix.
 
@@ -188,7 +177,6 @@ class Compactor(ABC):
         for key in paths:
             hours[key.rsplit("/", 1)[0]].append(key)
         return hours
-
 
     def get_object_paths(self, target_day: datetime) -> list[str]:
         """List every raw object key for this feed on the target day.
@@ -214,7 +202,6 @@ class Compactor(ABC):
         logger.info("%s: found %d raw objects under %s", self.feed_name, len(paths), prefix)
         return paths
 
-
     def get_object(self, key: str) -> bytes:
         """Download one raw object and return its bytes.
 
@@ -232,7 +219,6 @@ class Compactor(ABC):
             Key=key,
         )
         return response["Body"].read()
-
 
     def parse_snapshot(self, snapshot: bytes) -> list[dict]:
         """Parse one raw snapshot and flatten its entities into rows.
@@ -268,7 +254,6 @@ class Compactor(ABC):
 
         entities = [self.shape_entity(entity, raw_ts) for entity in feed.entity]
         return list(itertools.chain.from_iterable(entities))
-
 
     def fetch_rows(self, paths: list[str]) -> list[dict]:
         """Download and parse a batch of snapshots concurrently, returning rows.
@@ -316,8 +301,7 @@ class Compactor(ABC):
 
         return rows
 
-
-    def write_hour(self, target_day: datetime) -> None:
+    def write_hours(self, target_day: datetime) -> None:
         """Write the day's rows to local Parquet files, one file per hour.
 
         Lists the day's keys, groups them by hour, and fetches and flattens
@@ -352,16 +336,14 @@ class Compactor(ABC):
             rows = self.fetch_rows(keys)
             table = pa.Table.from_pylist(rows, schema=self.schema)
 
-            if not table:
-                raise RuntimeError(
-                    f"no raw snapshots found for {self.feed_name} on hour: {hour_num}"
-                )
+            if table:
+                # Spill the hour to disk now so its rows can be freed before the next hour.
+                pq.write_table(table, f"/tmp/{self.feed_name}/{hour_num}.parquet")
 
-            # Spill the hour to disk now so its rows can be freed before the next hour.
-            pq.write_table(table, f"/tmp/{self.feed_name}/{hour_num}.parquet")
+                logger.info("%s: hour %s produced %d rows", self.feed_name, hour, len(rows))
 
-            logger.info("%s: hour %s produced %d rows", self.feed_name, hour, len(rows))
-
+            # Clean up the leftover rows and table before the next iteration
+            del rows, table
 
     def write_curated(self, target_day: datetime) -> None:
         """Merge the day's hourly files into one sorted, deduplicated Parquet file on S3.
@@ -409,7 +391,6 @@ class Compactor(ABC):
 
         logger.info("%s: wrote %s", self.feed_name, write_path)
 
-
     def validate_sort_keys(self) -> None:
         """Fail fast if a declared sort key is not a column in the schema.
 
@@ -424,7 +405,6 @@ class Compactor(ABC):
             raise RuntimeError(
                 f"{self.feed_name}: sort keys {missing} are not columns in the schema"
             )
-
 
     def run(self, day: datetime) -> None:
         """Compact one day of this feed, end to end.
