@@ -27,7 +27,7 @@ The compactor tests build real protobuf entities and flatten them through
 `shape_entity`, so the presence checks (an absent field is None, an explicit
 zero is kept) are covered directly, along with the schema-to-shape consistency,
 the coverage and failure-rate metrics, the concurrent `fetch_rows` failure
-counting (via a small FakeS3), and the empty-day guard in `create_table`. A
+counting (via a small FakeS3), and the empty-day and empty-hour guards in `write_hour`. A
 saved snapshot with a field unset is the exact regression case for the
 presence-check class of bug.
 

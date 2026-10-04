@@ -8,6 +8,7 @@ dependencies = [
     "duckdb>=1.0",
     "pyarrow>=16",
     "gtfs-realtime-bindings>=1.0",
+    "pyarrow.Parquet>=16"
 ]
 
 [tool.uv]

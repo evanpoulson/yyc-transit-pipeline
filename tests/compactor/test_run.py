@@ -20,34 +20,31 @@ class _BadSortKeys(VehiclePositionsCompactor):
 
 def test_run_executes_the_pipeline_in_order(monkeypatch, vp_compactor):
     calls = []
-    sentinel_table = object()
     monkeypatch.setattr(vp_compactor, "validate_sort_keys", lambda: calls.append("validate"))
     monkeypatch.setattr(vp_compactor, "reset_counters", lambda: calls.append("reset"))
 
-    def fake_create(day):
-        calls.append("create")
-        return sentinel_table
+    def fake_write_hour(day):
+        calls.append("write_hour")
 
-    def fake_write(df, day):
+    def fake_write(day):
         calls.append("write")
-        assert df is sentinel_table   # write gets exactly what create produced
 
-    monkeypatch.setattr(vp_compactor, "create_table", fake_create)
+    monkeypatch.setattr(vp_compactor, "write_hour", fake_write_hour)
     monkeypatch.setattr(vp_compactor, "write_curated", fake_write)
 
     vp_compactor.run(DAY)
-    assert calls == ["validate", "reset", "create", "write"]
+    assert calls == ["validate", "reset", "write_hour", "write"]
 
 
 def test_run_does_not_write_when_the_day_is_empty(monkeypatch, vp_compactor):
     monkeypatch.setattr(vp_compactor, "validate_sort_keys", lambda: None)
 
-    def fake_create(day):
+    def fake_write_hour(day):
         raise RuntimeError("no raw snapshots found")
 
     wrote = []
-    monkeypatch.setattr(vp_compactor, "create_table", fake_create)
-    monkeypatch.setattr(vp_compactor, "write_curated", lambda df, day: wrote.append(1))
+    monkeypatch.setattr(vp_compactor, "write_hour", fake_write_hour)
+    monkeypatch.setattr(vp_compactor, "write_curated", lambda day: wrote.append(1))
 
     with pytest.raises(RuntimeError):
         vp_compactor.run(DAY)
@@ -57,7 +54,7 @@ def test_run_does_not_write_when_the_day_is_empty(monkeypatch, vp_compactor):
 def test_run_validates_before_any_fetching(monkeypatch):
     c = _BadSortKeys(None, "bucket", None, None)
     fetched = []
-    monkeypatch.setattr(c, "create_table", lambda day: fetched.append(1))
+    monkeypatch.setattr(c, "write_hour", lambda day: fetched.append(1))
     with pytest.raises(RuntimeError):
         c.run(DAY)
     assert fetched == []   # a bad sort key stops the run before downloading
