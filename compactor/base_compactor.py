@@ -12,6 +12,7 @@ one protobuf entity into one or more flat rows.
 
 import itertools
 import logging
+import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -343,18 +344,20 @@ class Compactor(ABC):
             )
 
         paths_by_hour = self.group_by_hour(paths)
+        os.makedirs(f"/tmp/{self.feed_name}", exist_ok=True)
 
         for hour, keys in sorted(paths_by_hour.items()):
+            hour_num = hour.rsplit("/", 1)[1]
             rows = self.fetch_rows(keys)
             table = pa.Table.from_pylist(rows, schema=self.schema)
 
             if not table:
                 raise RuntimeError(
-                    f"no raw snapshots found for {self.feed_name} on hour: {hour}"
+                    f"no raw snapshots found for {self.feed_name} on hour: {hour_num}"
                 )
 
             # Spill the hour to disk now so its rows can be freed before the next hour.
-            pq.write_table(table, f"/tmp/{self.feed_name}/{hour}")
+            pq.write_table(table, f"/tmp/{self.feed_name}/{hour_num}.parquet")
 
             logger.info("%s: hour %s produced %d rows", self.feed_name, hour, len(rows))
 
