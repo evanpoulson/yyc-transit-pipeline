@@ -292,7 +292,7 @@ class Compactor(ABC):
                 data = self.parse_snapshot(blob)
             except Exception:
                 self.parse_failed += 1
-                logger.debug("%s: parse failed for %s", self.feed_name, object_key)
+                logger.debug("%s: parse failed for %s", self.feed_name, object_key, exc_info=True)
                 continue
 
             rows.extend(data)
@@ -429,7 +429,7 @@ class Compactor(ABC):
 
         logger.info("%s: starting compaction for %s", self.feed_name, day.strftime("%Y-%m-%d"))
 
-        self.write_hour(day)
+        self.write_hours(day)
 
         logger.info(
             "%s: %.2f%% snapshot coverage, %.2f%% snapshots failed (%d download failures, %d parse failures)",
