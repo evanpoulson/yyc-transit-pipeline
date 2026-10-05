@@ -80,6 +80,15 @@ def parse_args() -> argparse.Namespace:
             "spills to disk instead. Defaults to 4GB."
         ),
     )
+    parser.add_argument(
+            "--thread-count",
+            default="1",
+            help=(
+                "DuckDB thread count, e.g. 1 vCPU. Caps the number of threads DuckDB" 
+                "will use to sort and dedupe over the day's hourly parquet files. " 
+                "Defaults to 1."
+            ),
+        )
     return parser.parse_args()
 
 
@@ -91,6 +100,7 @@ def main() -> None:
     feed = args.feed
     log_level = args.log_level
     memory_limit = args.memory_limit
+    thread_count = args.thread_count
 
     logging.basicConfig(
         level=log_level,
@@ -113,7 +123,7 @@ def main() -> None:
     with duckdb.connect() as db, ThreadPoolExecutor(max_workers=32) as executor:
         db.execute("INSTALL httpfs")
         db.execute("LOAD httpfs")
-        db.execute("SET threads TO 4")
+        db.execute(f"SET threads TO {thread_count}")
         db.execute(f"SET memory_limit = '{memory_limit}'")
         db.execute(f"""
             CREATE OR REPLACE SECRET s3_secret (
