@@ -4,6 +4,7 @@
             "name": "compactor",
             "image": "860574615377.dkr.ecr.ca-central-1.amazonaws.com/yyc-transit/compactor:2f999fa",
             "essential": true,
+            "command": ["--thread-count", "4", "--memory-limit", "4GB"],
             "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {
