@@ -1,9 +1,10 @@
 """Smoke tests for the compactor's main().
 
 main() is the path a scheduled run takes, and it is where the process-wide setup
-lives: logging, the boto3 client, the DuckDB connection with its memory cap and
-S3 secret, and the loop over feeds. None of that is exercised by the unit
-tests, which is how a broken logging call once reached main with CI green. These
+lives: logging, the boto3 client, the DuckDB connection with its memory cap,
+thread count, and S3 secret, and the loop over feeds. None of that is exercised
+by the unit tests, which is how a broken logging call once reached main with CI
+green. These
 tests run main() end to end with the compactors and DuckDB replaced by fakes,
 while logging and boto3 client construction stay real, so a bad call signature
 there fails here rather than on the first nightly run.
@@ -94,9 +95,10 @@ def test_one_failing_feed_does_not_stop_the_others(run_main, caplog):
 
 
 def test_duckdb_is_capped_and_can_reach_the_bucket(run_main):
-    db, _ = run_main(["--day", "2026-09-21", "--memory-limit", "6GB"])
+    db, _ = run_main(["--day", "2026-09-21", "--memory-limit", "6GB", "--thread-count", "3"])
     assert db.sql_containing("LOAD httpfs")
     assert db.sql_containing("SET memory_limit = '6GB'")
+    assert db.sql_containing("SET threads TO 3")
     [secret] = db.sql_containing("CREATE OR REPLACE SECRET")
     # The bucket lives in config.REGION; a secret without it signs for
     # us-east-1 wherever AWS_REGION is not set (the laptop).
@@ -109,3 +111,11 @@ def test_logging_is_configured_at_the_requested_level(run_main, monkeypatch):
     monkeypatch.setattr(logging, "basicConfig", lambda **kw: seen.update(kw))
     run_main(["--day", "2026-09-21", "--log-level", "DEBUG"])
     assert seen["level"] == "DEBUG"
+
+
+def test_duckdb_threads_default_to_one(run_main):
+    # With no --thread-count (the scheduled run passes no arguments), DuckDB
+    # gets the flag's default rather than detecting cores itself, which on
+    # Fargate can see the host's cores instead of the task's vCPUs.
+    db, _ = run_main(["--day", "2026-09-21"])
+    assert db.sql_containing("SET threads TO 1")

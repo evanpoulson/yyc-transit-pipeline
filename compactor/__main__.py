@@ -81,14 +81,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-            "--thread-count",
-            default="1",
-            help=(
-                "DuckDB thread count, e.g. 1 vCPU. Caps the number of threads DuckDB" 
-                "will use to sort and dedupe over the day's hourly parquet files. " 
-                "Defaults to 1."
-            ),
-        )
+        "--thread-count",
+        type=int,
+        default="1",
+        help=(
+            "DuckDB thread count, e.g. 1 thread. Caps the number of threads DuckDB " 
+            "will use to sort and dedupe over the day's hourly parquet files. " 
+            "Defaults to 1."
+        ),
+    )
     return parser.parse_args()
 
 
