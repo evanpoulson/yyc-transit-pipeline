@@ -44,7 +44,7 @@ def test_defaults(monkeypatch):
     assert args.feed is None
     assert args.log_level == "INFO"
     assert args.memory_limit == "4GB"
-    assert args.thread_count == "1"
+    assert args.thread_count == 1
 
 
 def test_invalid_feed_is_rejected(monkeypatch):
@@ -66,4 +66,10 @@ def test_memory_limit_is_configurable(monkeypatch):
 
 def test_thread_count_is_configurable(monkeypatch):
     monkeypatch.setattr("sys.argv", ["compactor", "--thread-count", "2"])
-    assert cli.parse_args().thread_count == "2"
+    assert cli.parse_args().thread_count == 2
+
+
+def test_non_integer_thread_count_is_rejected(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["compactor", "--thread-count", "four"])
+    with pytest.raises(SystemExit):
+        cli.parse_args()
