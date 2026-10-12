@@ -51,7 +51,34 @@ class Catcher(ABC):
         """S3 bucket the objects are uploaded to."""
         ...
 
-    def build_key(source_name: str, extension: str, timestamp: datetime) -> str:
+    def __init__(
+        self,
+        source_name: str,
+        source_url: str,
+        connection_timeout: int,
+        read_timeout: int,
+        s3_client: botocore.client.BaseClient,
+        bucket: str
+    ):
+        """Store the variables specific to this poller.
+
+        Args:
+            source_name: Name of the data source.
+            source_url: URL of the data source.
+            connection_timeout: Time to wait for connection before timing out.
+            read_timeout: Time to wait between bytes before timing out.
+            s3_client: Initialized boto3 S3 client to use for accessing S3 bucket.
+            bucket: S3 bucket identifier.
+        """
+
+        self.source_name = source_name
+        self.source_url = source_url
+        self.connection_timeout = connection_timeout
+        self.read_timeout = read_timeout
+        self.s3_client = s3_client
+        self.bucket = bucket
+
+    def build_key(self, source_name: str, extension: str, timestamp: datetime) -> str:
         """Builds the S3 bucket object key for a particular object at a particular time.
 
         Produces a partition-friendly, unique key of the form
@@ -71,7 +98,7 @@ class Catcher(ABC):
         key = f"raw/{source_name}/{date_path}/{source_name}_{epoch}.{extension}"
         return key
 
-    def retrieve_id(url: str) -> str:
+    def retrieve_id(self, url: str) -> str:
         """Retrieves the ETag identifier of the file.
 
         Which in this case refers to the unique object for a feed exposed by Socrata (Open Data Calgary).
@@ -86,7 +113,7 @@ class Catcher(ABC):
         headers = requests.head(url, allow_redirects=True)
         return headers.headers['ETag']
 
-    def fetch_object(url: str, connect_timeout: int, read_timeout: str) -> bytes:
+    def fetch_object(self, url: str, connect_timeout: int, read_timeout: str) -> bytes:
         """Fetches an object from a provided url.
 
         Does no validation. Simply performs the GET, raises on a non 2xx status code,
@@ -109,7 +136,7 @@ class Catcher(ABC):
         object.raise_for_status
         return object.content
 
-    def store_object(s3_client: botocore.client.BaseClient, bucket: str, key: str, object: bytes) -> dict:
+    def store_object(self, s3_client: botocore.client.BaseClient, bucket: str, key: str, object: bytes) -> dict:
         """Uploads an object to S3 under a specified key.
 
         Args:
