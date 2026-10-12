@@ -1,6 +1,5 @@
 import argparse
 import logging
-import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -11,7 +10,8 @@ import requests
 from google.protobuf import message
 from google.transit import gtfs_realtime_pb2
 
-import config
+logger = logging.getLogger(__name__)
+
 
 class Catcher(ABC):
 
@@ -25,6 +25,12 @@ class Catcher(ABC):
     @abstractmethod
     def source_url(self) -> str:
         """Source url this catcher is ingesting."""
+        ...
+
+    @property
+    @abstractmethod
+    def extension(self) -> str:
+        """File extension source is stored as."""
         ...
 
     @property
@@ -55,6 +61,7 @@ class Catcher(ABC):
         self,
         source_name: str,
         source_url: str,
+        extension: str,
         connection_timeout: int,
         read_timeout: int,
         s3_client: botocore.client.BaseClient,
@@ -65,6 +72,7 @@ class Catcher(ABC):
         Args:
             source_name: Name of the data source.
             source_url: URL of the data source.
+            extension: File extension of the data source.
             connection_timeout: Time to wait for connection before timing out.
             read_timeout: Time to wait between bytes before timing out.
             s3_client: Initialized boto3 S3 client to use for accessing S3 bucket.
@@ -73,6 +81,7 @@ class Catcher(ABC):
 
         self.source_name = source_name
         self.source_url = source_url
+        self.extension = extension
         self.connection_timeout = connection_timeout
         self.read_timeout = read_timeout
         self.s3_client = s3_client
@@ -110,6 +119,7 @@ class Catcher(ABC):
         Returns:
             ETag/File id of the feed object.
         """
+
         headers = requests.head(url, allow_redirects=True)
         return headers.headers['ETag']
 
