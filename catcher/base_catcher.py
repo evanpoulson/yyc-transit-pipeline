@@ -24,7 +24,7 @@ class Catcher(ABC):
         """Builds the S3 bucket object key for a particular object at a particular time.
 
         Produces a partition-friendly, unique key of the form
-            raw/<source_name>/<YYYY>/<MM>/<DD>/<HH>/<source_name>_<epoch>.<extension>
+        raw/<source_name>/<YYYY>/<MM>/<DD>/<HH>/<source_name>_<epoch>.<extension>
 
         Args:
             source_name: Short identifier for the data source. 
@@ -39,4 +39,20 @@ class Catcher(ABC):
         key = f"raw/{source_name}/{date_path}/{source_name}_{epoch}.{extension}"
         return key
 
-    
+    def fetch_object(url: str, connect_timeout: int, read_timeout: str) -> bytes:
+        """Fetches an object from a provided url.
+
+        Does no validation. Simply performs the GET, raises on a non 2xx status code,
+        and returns the raw bytes of the object. Parsing and errors are handled downstream.
+
+        Args:
+            url: The url of the data source.
+            connect_timeout: Time to wait to connect before timing out.
+            read_tiemout: Time to wait between bytes before timing out.
+
+        Returns:
+            The raw bytes of the fetched object.
+        """
+        object = requests.get(url, timeout=(connect_timeout, read_timeout))
+        object.raise_for_status
+        return object.content
