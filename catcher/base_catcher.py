@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
 import boto3
+import botocore.client
 import requests
 from google.protobuf import message
 from google.transit import gtfs_realtime_pb2
@@ -34,6 +35,7 @@ class Catcher(ABC):
         Returns:
             The S3 key string with no leading slash or bucket name.
         """
+
         date_path = timestamp.strftime("%Y/%m/%d/%H")
         epoch = int(timestamp.timestamp())
         key = f"raw/{source_name}/{date_path}/{source_name}_{epoch}.{extension}"
@@ -53,6 +55,27 @@ class Catcher(ABC):
         Returns:
             The raw bytes of the fetched object.
         """
+
         object = requests.get(url, timeout=(connect_timeout, read_timeout))
         object.raise_for_status
         return object.content
+
+    def store_object(s3_client: botocore.client.BaseClient, bucket: str, key: str, object: bytes) -> dict:
+        """Uploads an object to S3 under a specified key.
+
+        Args:
+            s3_client: An initialized boto3 client.
+            bucket: The S3 to store the object in.
+            key: Key to store the object in S3 as.
+            object: Object bytes to store
+
+        Returns:
+            Response from the S3 put call.
+        """
+
+        return s3_client.put_object(
+            Body=object,
+            Bucket=bucket,
+            Key=key,
+            ContentType="application/octet-stream",
+        )
