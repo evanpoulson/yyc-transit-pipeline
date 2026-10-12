@@ -1,5 +1,6 @@
 import argparse
 import logging
+import time 
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -57,6 +58,12 @@ class Catcher(ABC):
         """S3 bucket the objects are uploaded to."""
         ...
 
+    @property
+    @abstractmethod 
+    def current_id(self) -> str:
+        """ID of the most recently served object."""
+        ...
+
     def __init__(
         self,
         source_name: str,
@@ -86,6 +93,7 @@ class Catcher(ABC):
         self.read_timeout = read_timeout
         self.s3_client = s3_client
         self.bucket = bucket
+        self.current_id = None
 
     def build_key(self, source_name: str, extension: str, timestamp: datetime) -> str:
         """Builds the S3 bucket object key for a particular object at a particular time.
@@ -165,3 +173,33 @@ class Catcher(ABC):
             Key=key,
             ContentType="application/octet-stream",
         )  
+
+    def poll(self) -> tuple:
+        """Polls the feed for new objects and returns them along with the timestamp of when it was fetched.
+
+        Checks the ETag header (File ID for Socrata) to determine when a new object has been served.
+        When a new object has been served it returns it for storage to S3.
+
+        Returns:
+            The raw bytes of the fetched object and the timestamp of when it was fetched.
+        """
+
+        while True:
+            try:
+                new_id = self.retrieve_id(self.source_url)
+                if new_id != self.current_id:
+                    object = self.fetch_object(source_url=self.source_url, connect_timeout=self.connection_timeout, read_timeout=self.read_timeout)
+                    timestamp = datetime.now(UTC)
+                    logger.info("fetched %s object from %s", self.source_name, self.source_url)
+
+                    self.current_id = new_id
+                    return object, timestamp
+                time.sleep(1)
+            except requests.ConnectTimeout as e:
+                logger.error("connection timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.connection_timeout)
+                time.sleep(self.connection_timeout)
+            except requests.ReadTimeout as e:
+                logger.error("read timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.read_timeout)
+                time.sleep(self.read_timeout)
+            except requests.RequestException as e:
+                logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
