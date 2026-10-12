@@ -71,6 +71,21 @@ class Catcher(ABC):
         key = f"raw/{source_name}/{date_path}/{source_name}_{epoch}.{extension}"
         return key
 
+    def retrieve_id(url: str) -> str:
+        """Retrieves the ETag identifier of the file.
+
+        Which in this case refers to the unique object for a feed exposed by Socrata (Open Data Calgary).
+        Socrata doesn't overwrite feed objects, instead it just redirects the url to the new one, thus changing the ETag.
+
+        Args:
+            url: The url of the feed.
+
+        Returns:
+            ETag/File id of the feed object.
+        """
+        headers = requests.head(url, allow_redirects=True)
+        return headers.headers['ETag']
+
     def fetch_object(url: str, connect_timeout: int, read_timeout: str) -> bytes:
         """Fetches an object from a provided url.
 
@@ -108,4 +123,4 @@ class Catcher(ABC):
             Bucket=bucket,
             Key=key,
             ContentType="application/octet-stream",
-        )
+        )  
