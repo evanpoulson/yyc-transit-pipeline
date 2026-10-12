@@ -17,8 +17,38 @@ class Catcher(ABC):
 
     @property
     @abstractmethod
+    def source_name(self) -> str:
+        """Name of the source this catcher is ingesting."""
+        ...
+
+    @property
+    @abstractmethod
     def source_url(self) -> str:
-        """The source url this catcher is ingesting."""
+        """Source url this catcher is ingesting."""
+        ...
+
+    @property
+    @abstractmethod
+    def connection_timeout(self) -> int:
+        """Time to wait for source connection before timing out."""
+        ...
+
+    @property
+    @abstractmethod
+    def read_timeout(self) -> int:
+        """Time to wait between bytes before timing out."""
+        ...
+
+    @property
+    @abstractmethod
+    def s3_client(self) -> botocore.client.BaseClient:
+        """S3 client to use for storing objects."""
+        ...
+
+    @property
+    @abstractmethod
+    def bucket(self) -> str:
+        """S3 bucket the objects are uploaded to."""
         ...
 
     def build_key(source_name: str, extension: str, timestamp: datetime) -> str:
