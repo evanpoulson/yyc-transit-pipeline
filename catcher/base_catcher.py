@@ -99,6 +99,10 @@ class Catcher(ABC):
 
         Returns:
             The raw bytes of the fetched object.
+
+        Raises:
+            requests.RequestException: If the request fails, times out, or returns
+            a non-2xx status.
         """
 
         object = requests.get(url, timeout=(connect_timeout, read_timeout))
