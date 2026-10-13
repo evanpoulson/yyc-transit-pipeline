@@ -95,7 +95,7 @@ class Catcher(ABC):
 
         Args:
             url: The url of the data source.
-            connect_timeout: Time to wait to connect before timing out.
+            connection_timeout: Time to wait to connect before timing out.
             read_tiemout: Time to wait between bytes before timing out.
 
         Returns:
@@ -109,7 +109,7 @@ class Catcher(ABC):
         headers = {
             'If-None-Match': self.current_id
         }
-        object = requests.get(url=self.source_url, headers=headers, timeout=(self.connect_timeout, self.read_timeout))
+        object = requests.get(url=self.source_url, headers=headers, timeout=(self.connection_timeout, self.read_timeout))
         object.raise_for_status()
         return object
 
