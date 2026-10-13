@@ -1,7 +1,7 @@
 import logging
 import time 
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import UTC, datetime
 
 import botocore.client
@@ -43,36 +43,19 @@ class Catcher(ABC):
         ...
 
     @property
-    @abstractmethod
-    def s3_client(self) -> botocore.client.BaseClient:
-        """S3 client to use for storing objects."""
-        ...
-
-    @property
-    @abstractmethod
-    def bucket(self) -> str:
-        """S3 bucket the objects are uploaded to."""
-        ...
-
-    @property
-    @abstractmethod
-    def executor(self) -> ThreadPoolExecutor:
-        """Threadpool to use for polling."""
-        ...
-
-    @property
     @abstractmethod 
     def current_id(self) -> str:
         """ID of the most recently served object."""
         ...
 
+    @property
+    @abstractmethod
+    def delay(self) -> int:
+        """Seconds to delay before retrying a request."""
+        ...
+
     def __init__(
         self,
-        source_name: str,
-        source_url: str,
-        extension: str,
-        connection_timeout: int,
-        read_timeout: int,
         s3_client: botocore.client.BaseClient,
         bucket: str,
         executor: ThreadPoolExecutor
@@ -80,20 +63,11 @@ class Catcher(ABC):
         """Store the variables specific to this poller.
 
         Args:
-            source_name: Name of the data source.
-            source_url: URL of the data source.
-            extension: File extension of the data source.
-            connection_timeout: Time to wait for connection before timing out.
-            read_timeout: Time to wait between bytes before timing out.
             s3_client: Initialized boto3 S3 client to use for accessing S3 bucket.
             bucket: S3 bucket identifier.
+            executor: Thread pool to run on.
         """
 
-        self.source_name = source_name
-        self.source_url = source_url
-        self.extension = extension
-        self.connection_timeout = connection_timeout
-        self.read_timeout = read_timeout
         self.s3_client = s3_client
         self.bucket = bucket
         self.executor = executor
@@ -142,7 +116,7 @@ class Catcher(ABC):
             'If-None-Match': self.current_id
         }
         object = requests.get(url=url, headers=headers, timeout=(connect_timeout, read_timeout))
-        object.raise_for_status
+        object.raise_for_status()
         return object
 
     def store_object(self, s3_client: botocore.client.BaseClient, bucket: str, key: str, object: bytes) -> dict:
@@ -174,7 +148,7 @@ class Catcher(ABC):
 
         while True:
             try:
-                response = self.fetch_object(source_url=self.source_url, connect_timeout=self.connection_timeout, read_timeout=self.read_timeout)
+                response = self.fetch_object(url=self.source_url, connect_timeout=self.connection_timeout, read_timeout=self.read_timeout)
                 if response.status_code == 200: # New object served
                     logger.info("%s updated, processing new object", self.source_name)
 
@@ -188,7 +162,7 @@ class Catcher(ABC):
 
                     self.current_id = response.headers['ETag']
 
-                time.sleep(5)
+                time.sleep(self.delay)
             except requests.ConnectTimeout:
                 logger.error("connection timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.connection_timeout)
                 time.sleep(self.connection_timeout)
@@ -197,11 +171,15 @@ class Catcher(ABC):
                 time.sleep(self.read_timeout)
             except requests.RequestException:
                 logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
+                time.sleep(self.delay)
 
-    def run(self) -> None:
+    def run(self) -> Future:
         """Runs the catcher.
         
         Uses the thread pool it was constructed with.
+
+        Returns:
+            The future the poll service is running on.
         """
 
-        future = self.executor.submit(self.poll)
+        return self.executor.submit(self.poll)
