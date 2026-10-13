@@ -139,7 +139,7 @@ class Catcher(ABC):
         headers = requests.head(url, allow_redirects=True)
         return headers.headers['ETag']
 
-    def fetch_object(self, url: str, connect_timeout: int, read_timeout: str) -> bytes:
+    def fetch_object(self, url: str, connect_timeout: int, read_timeout: str) -> requests.Response:
         """Fetches an object from a provided url.
 
         Does no validation. Simply performs the GET, raises on a non 2xx status code,
@@ -151,16 +151,19 @@ class Catcher(ABC):
             read_tiemout: Time to wait between bytes before timing out.
 
         Returns:
-            The raw bytes of the fetched object.
+            The response object.
 
         Raises:
             requests.RequestException: If the request fails, times out, or returns
-            a non-2xx status.
+            a 4xx or 5xx status.
         """
 
-        object = requests.get(url, timeout=(connect_timeout, read_timeout))
+        headers = {
+            'If-None-Match': self.current_id
+        }
+        object = requests.get(url=url, headers=headers, timeout=(connect_timeout, read_timeout))
         object.raise_for_status
-        return object.content
+        return object
 
     def store_object(self, s3_client: botocore.client.BaseClient, bucket: str, key: str, object: bytes) -> dict:
         """Uploads an object to S3 under a specified key.
@@ -182,32 +185,36 @@ class Catcher(ABC):
             ContentType="application/octet-stream",
         )  
 
-    def poll(self) -> tuple:
-        """Polls the feed for new objects and returns them along with the timestamp of when it was fetched.
+    def poll(self) -> None:
+        """Polls the feed for new objects and stores them in S3.
 
         Checks the ETag header (File ID for Socrata) to determine when a new object has been served.
-        When a new object has been served it returns it for storage to S3.
-
-        Returns:
-            The raw bytes of the fetched object and the timestamp of when it was fetched.
+        When a new object has been served it stored it in S3.
         """
 
         while True:
             try:
-                new_id = self.retrieve_id(self.source_url)
-                if new_id != self.current_id:
-                    object = self.fetch_object(source_url=self.source_url, connect_timeout=self.connection_timeout, read_timeout=self.read_timeout)
+
+                response = self.fetch_object(source_url=self.source_url, connect_timeout=self.connection_timeout, read_timeout=self.read_timeout)
+                if response.status_code == 200:
+                    logger.info("%s updated, processing new object", self.source_name)
+
+                    object = response.content
                     timestamp = datetime.now(UTC)
                     logger.info("fetched %s object from %s", self.source_name, self.source_url)
 
-                    self.current_id = new_id
-                    return object, timestamp
-                time.sleep(1)
-            except requests.ConnectTimeout as e:
+                    key = self.build_key(source_name=self.source_name, extension=self.extension, timestamp=timestamp)
+                    self.store_object(s3_client=self.s3_client, bucket=self.bucket, key=key, object=object)
+                    logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
+
+                    self.current_id 
+
+                time.sleep(5)
+            except requests.ConnectTimeout:
                 logger.error("connection timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.connection_timeout)
                 time.sleep(self.connection_timeout)
-            except requests.ReadTimeout as e:
+            except requests.ReadTimeout:
                 logger.error("read timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.read_timeout)
                 time.sleep(self.read_timeout)
-            except requests.RequestException as e:
+            except requests.RequestException:
                 logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
