@@ -155,16 +155,13 @@ class Catcher(ABC):
                     logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
 
                     self.current_id = response.headers['ETag']
-
-                time.sleep(self.delay)
             except requests.ConnectTimeout:
-                logger.error("connection timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.connection_timeout)
-                time.sleep(self.connection_timeout)
+                logger.error("connection timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.delay)
             except requests.ReadTimeout:
-                logger.error("read timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.read_timeout)
-                time.sleep(self.read_timeout)
+                logger.error("read timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.delay)
             except requests.RequestException:
                 logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
+            finally:
                 time.sleep(self.delay)
 
     def run(self) -> Future:
