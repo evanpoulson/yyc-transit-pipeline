@@ -148,13 +148,13 @@ class Catcher(ABC):
 
                     self.current_id = response.headers['ETag']
             except requests.ConnectTimeout:
-                logger.error("connection timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.delay)
+                logger.error("connection timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             except requests.ReadTimeout:
-                logger.error("read timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.delay)
+                logger.error("read timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             except requests.RequestException:
-                logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
+                logger.error("request exception on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay, exc_info=True)
             except Exception:
-                logger.error("non-request exception occured on %s from %s", self.source_name, self.source_url, exc_info=True)
+                logger.error("non-request exception occurred on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay, exc_info=True)
             finally:
                 time.sleep(self.delay)
 
