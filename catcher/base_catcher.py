@@ -43,12 +43,6 @@ class Catcher(ABC):
         ...
 
     @property
-    @abstractmethod 
-    def current_id(self) -> str:
-        """ID of the most recently served object."""
-        ...
-
-    @property
     @abstractmethod
     def delay(self) -> int:
         """Seconds to delay before retrying a request."""
