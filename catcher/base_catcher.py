@@ -45,7 +45,7 @@ class Catcher(ABC):
     @property
     @abstractmethod
     def delay(self) -> int:
-        """Seconds to delay before retrying a request."""
+        """Seconds to delay between polls."""
         ...
 
     def __init__(
@@ -74,8 +74,6 @@ class Catcher(ABC):
         raw/<source_name>/<YYYY>/<MM>/<DD>/<HH>/<source_name>_<epoch>.<extension>
 
         Args:
-            source_name: Short identifier for the data source. 
-            extension: The file extension for the object to be stored as.
             timestamp: Timestamp of when the object was obtained.
 
         Returns:
@@ -90,13 +88,9 @@ class Catcher(ABC):
     def fetch_object(self) -> requests.Response:
         """Fetches an object from a provided url.
 
-        Does no validation. Simply performs the GET, raises on a non 2xx status code,
-        and returns the raw bytes of the object. Parsing and errors are handled downstream.
-
-        Args:
-            url: The url of the data source.
-            connection_timeout: Time to wait to connect before timing out.
-            read_tiemout: Time to wait between bytes before timing out.
+        Performs the GET with a If-None-Match header checking if the data served has changed since the last poll.
+        Raises on a non 2xx status code and returns the response object. 
+        Parsing and errors are handled downstream.
 
         Returns:
             The response object.
@@ -117,8 +111,6 @@ class Catcher(ABC):
         """Uploads an object to S3 under a specified key.
 
         Args:
-            s3_client: An initialized boto3 client.
-            bucket: The S3 to store the object in.
             key: Key to store the object in S3 as.
             object: Object bytes to store
 
@@ -162,7 +154,7 @@ class Catcher(ABC):
             except requests.RequestException:
                 logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
             except Exception:
-                logger.error("non-request exception occured", exc_info=True)
+                logger.error("non-request exception occured on %s from %s", self.source_name, self.source_url, exc_info=True)
             finally:
                 time.sleep(self.delay)
 
