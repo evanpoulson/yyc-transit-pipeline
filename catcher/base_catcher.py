@@ -123,22 +123,6 @@ class Catcher(ABC):
         key = f"raw/{source_name}/{date_path}/{source_name}_{epoch}.{extension}"
         return key
 
-    def retrieve_id(self, url: str) -> str:
-        """Retrieves the ETag identifier of the file.
-
-        Which in this case refers to the unique object for a feed exposed by Socrata (Open Data Calgary).
-        Socrata doesn't overwrite feed objects, instead it just redirects the url to the new one, thus changing the ETag.
-
-        Args:
-            url: The url of the feed.
-
-        Returns:
-            ETag/File id of the feed object.
-        """
-
-        headers = requests.head(url, allow_redirects=True)
-        return headers.headers['ETag']
-
     def fetch_object(self, url: str, connect_timeout: int, read_timeout: str) -> requests.Response:
         """Fetches an object from a provided url.
 
@@ -194,9 +178,8 @@ class Catcher(ABC):
 
         while True:
             try:
-
                 response = self.fetch_object(source_url=self.source_url, connect_timeout=self.connection_timeout, read_timeout=self.read_timeout)
-                if response.status_code == 200:
+                if response.status_code == 200: # New object served
                     logger.info("%s updated, processing new object", self.source_name)
 
                     object = response.content
@@ -207,7 +190,7 @@ class Catcher(ABC):
                     self.store_object(s3_client=self.s3_client, bucket=self.bucket, key=key, object=object)
                     logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
 
-                    self.current_id 
+                    self.current_id = response.headers['ETag']
 
                 time.sleep(5)
             except requests.ConnectTimeout:
