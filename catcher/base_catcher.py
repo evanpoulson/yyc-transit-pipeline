@@ -67,7 +67,7 @@ class Catcher(ABC):
         self.executor = executor
         self.current_id = None
 
-    def build_key(self, source_name: str, extension: str, timestamp: datetime) -> str:
+    def build_key(self, timestamp: datetime) -> str:
         """Builds the S3 bucket object key for a particular object at a particular time.
 
         Produces a partition-friendly, unique key of the form
@@ -84,10 +84,10 @@ class Catcher(ABC):
 
         date_path = timestamp.strftime("%Y/%m/%d/%H")
         epoch = int(timestamp.timestamp())
-        key = f"raw/{source_name}/{date_path}/{source_name}_{epoch}.{extension}"
+        key = f"raw/{self.source_name}/{date_path}/{self.source_name}_{epoch}.{self.extension}"
         return key
 
-    def fetch_object(self, url: str, connect_timeout: int, read_timeout: str) -> requests.Response:
+    def fetch_object(self) -> requests.Response:
         """Fetches an object from a provided url.
 
         Does no validation. Simply performs the GET, raises on a non 2xx status code,
@@ -109,11 +109,11 @@ class Catcher(ABC):
         headers = {
             'If-None-Match': self.current_id
         }
-        object = requests.get(url=url, headers=headers, timeout=(connect_timeout, read_timeout))
+        object = requests.get(url=self.source_url, headers=headers, timeout=(self.connect_timeout, self.read_timeout))
         object.raise_for_status()
         return object
 
-    def store_object(self, s3_client: botocore.client.BaseClient, bucket: str, key: str, object: bytes) -> dict:
+    def store_object(self, key: str, object: bytes) -> dict:
         """Uploads an object to S3 under a specified key.
 
         Args:
@@ -126,9 +126,9 @@ class Catcher(ABC):
             Response from the S3 put call.
         """
 
-        return s3_client.put_object(
+        return self.s3_client.put_object(
             Body=object,
-            Bucket=bucket,
+            Bucket=self.bucket,
             Key=key,
             ContentType="application/octet-stream",
         )  
@@ -142,7 +142,7 @@ class Catcher(ABC):
 
         while True:
             try:
-                response = self.fetch_object(url=self.source_url, connect_timeout=self.connection_timeout, read_timeout=self.read_timeout)
+                response = self.fetch_object()
                 if response.status_code == 200: # New object served
                     logger.info("%s updated, processing new object", self.source_name)
 
@@ -150,8 +150,8 @@ class Catcher(ABC):
                     timestamp = datetime.now(UTC)
                     logger.info("fetched %s object from %s", self.source_name, self.source_url)
 
-                    key = self.build_key(source_name=self.source_name, extension=self.extension, timestamp=timestamp)
-                    self.store_object(s3_client=self.s3_client, bucket=self.bucket, key=key, object=object)
+                    key = self.build_key(timestamp=timestamp)
+                    self.store_object(key=key, object=object)
                     logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
 
                     self.current_id = response.headers['ETag']
