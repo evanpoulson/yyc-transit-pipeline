@@ -1,5 +1,5 @@
 import logging
-import time 
+import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import UTC, datetime
@@ -86,11 +86,10 @@ class Catcher(ABC):
         return key
 
     def fetch_object(self) -> requests.Response:
-        """Fetches an object from a provided url.
+        """Fetches an object from the set url.
 
-        Performs the GET with a If-None-Match header checking if the data served has changed since the last poll.
-        Raises on a non 2xx status code and returns the response object. 
-        Parsing and errors are handled downstream.
+        Performs the GET with an If-None-Match header checking if the data served has changed since the last poll.
+        Raises on a non 2xx status code and returns the response object.
 
         Returns:
             The response object.
@@ -103,9 +102,9 @@ class Catcher(ABC):
         headers = {
             'If-None-Match': self.current_id
         }
-        object = requests.get(url=self.source_url, headers=headers, timeout=(self.connection_timeout, self.read_timeout))
-        object.raise_for_status()
-        return object
+        response = requests.get(url=self.source_url, headers=headers, timeout=(self.connection_timeout, self.read_timeout))
+        response.raise_for_status()
+        return response
 
     def store_object(self, key: str, object: bytes) -> dict:
         """Uploads an object to S3 under a specified key.
@@ -129,7 +128,7 @@ class Catcher(ABC):
         """Polls the feed for new objects and stores them in S3.
 
         Checks the ETag header (File ID for Socrata) to determine when a new object has been served.
-        When a new object has been served it stored it in S3.
+        When a new object has been served it's stored in S3.
         """
 
         while True:
@@ -160,7 +159,7 @@ class Catcher(ABC):
 
     def run(self) -> Future:
         """Runs the catcher.
-        
+
         Uses the thread pool it was constructed with.
 
         Returns:
