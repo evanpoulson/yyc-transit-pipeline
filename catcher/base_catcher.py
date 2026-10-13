@@ -161,6 +161,8 @@ class Catcher(ABC):
                 logger.error("read timeout on %s from %s, retrying in %d", self.source_name, self.source_url, self.delay)
             except requests.RequestException:
                 logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
+            except Exception:
+                logger.error("non-request exception occured", exc_info=True)
             finally:
                 time.sleep(self.delay)
 
