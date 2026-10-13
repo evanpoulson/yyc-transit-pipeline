@@ -59,6 +59,12 @@ class Catcher(ABC):
         ...
 
     @property
+    @abstractmethod
+    def executor(self) -> ThreadPoolExecutor:
+        """Threadpool to use for polling."""
+        ...
+
+    @property
     @abstractmethod 
     def current_id(self) -> str:
         """ID of the most recently served object."""
@@ -72,7 +78,8 @@ class Catcher(ABC):
         connection_timeout: int,
         read_timeout: int,
         s3_client: botocore.client.BaseClient,
-        bucket: str
+        bucket: str,
+        executor: ThreadPoolExecutor
     ):
         """Store the variables specific to this poller.
 
@@ -93,6 +100,7 @@ class Catcher(ABC):
         self.read_timeout = read_timeout
         self.s3_client = s3_client
         self.bucket = bucket
+        self.executor = executor
         self.current_id = None
 
     def build_key(self, source_name: str, extension: str, timestamp: datetime) -> str:
