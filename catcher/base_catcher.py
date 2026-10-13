@@ -1,15 +1,11 @@
-import argparse
 import logging
 import time 
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
-import boto3
 import botocore.client
 import requests
-from google.protobuf import message
-from google.transit import gtfs_realtime_pb2
 
 logger = logging.getLogger(__name__)
 
