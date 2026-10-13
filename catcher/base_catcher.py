@@ -201,3 +201,11 @@ class Catcher(ABC):
                 time.sleep(self.read_timeout)
             except requests.RequestException:
                 logger.error("request exception on %s from %s", self.source_name, self.source_url, exc_info=True)
+
+    def run(self) -> None:
+        """Runs the catcher.
+        
+        Uses the thread pool it was constructed with.
+        """
+
+        future = self.executor.submit(self.poll)
