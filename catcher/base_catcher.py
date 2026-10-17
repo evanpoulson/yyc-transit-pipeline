@@ -67,6 +67,14 @@ class Catcher(ABC):
         self.stop = stop
         self.current_id = None
 
+    def sleep(self) -> None:
+        """Sleeps the thread for {delay} seconds.
+
+        Replaces the functionality of time.sleep for thread objects.
+        """
+
+        self.stop.wait(self.delay)
+
     def build_key(self, timestamp: datetime) -> str:
         """Builds the S3 bucket object key for a particular object at a particular time.
 
@@ -155,7 +163,7 @@ class Catcher(ABC):
             except Exception:
                 logger.error("non-request exception occurred on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay, exc_info=True)
             finally:
-                time.sleep(self.delay)
+                self.sleep()
 
     def run(self) -> None:
         """Runs the catcher.
