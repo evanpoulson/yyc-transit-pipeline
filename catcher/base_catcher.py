@@ -1,5 +1,4 @@
 import logging
-import time
 from abc import ABC, abstractmethod
 from threading import Event
 from datetime import UTC, datetime
@@ -107,6 +106,7 @@ class Catcher(ABC):
             a 4xx or 5xx status.
         """
 
+        # Use If-None-Match header rather than head requests to prevent rate limiting
         headers = {
             'If-None-Match': self.current_id
         }
@@ -132,28 +132,41 @@ class Catcher(ABC):
             ContentType="application/octet-stream",
         )  
 
-    def poll(self) -> None:
+    def poll_once(self) -> None:
         """Polls the feed for new objects and stores them in S3.
 
         Checks the ETag header (File ID for Socrata) to determine when a new object has been served.
         When a new object has been served it's stored in S3.
+
+        Raises:
+            requests.RequestException: If the request fails, times out, or returns
+            a 4xx or 5xx status.
         """
 
-        while True:
+        response = self.fetch_object()
+        if response.status_code == 200: # New object served
+            logger.info("%s updated, processing new object", self.source_name)
+
+            object = response.content
+            timestamp = datetime.now(UTC)
+            logger.info("fetched %s object from %s", self.source_name, self.source_url)
+
+            key = self.build_key(timestamp=timestamp)
+            self.store_object(key=key, object=object)
+            logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
+
+            self.current_id = response.headers['ETag']
+
+    def run(self) -> None:
+        """Runs the catcher.
+
+        Calls poll_once() and sleeps {delay} seconds between each successful or failed poll. 
+        Catches and logs exceptions when raised to prevent thread disruption.
+        """
+
+        while not self.stop.is_set():
             try:
-                response = self.fetch_object()
-                if response.status_code == 200: # New object served
-                    logger.info("%s updated, processing new object", self.source_name)
-
-                    object = response.content
-                    timestamp = datetime.now(UTC)
-                    logger.info("fetched %s object from %s", self.source_name, self.source_url)
-
-                    key = self.build_key(timestamp=timestamp)
-                    self.store_object(key=key, object=object)
-                    logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
-
-                    self.current_id = response.headers['ETag']
+                self.poll_once()
             except requests.ConnectTimeout:
                 logger.error("connection timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             except requests.ReadTimeout:
@@ -164,9 +177,3 @@ class Catcher(ABC):
                 logger.error("non-request exception occurred on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay, exc_info=True)
             finally:
                 self.sleep()
-
-    def run(self) -> None:
-        """Runs the catcher.
-        """
-
-        pass
