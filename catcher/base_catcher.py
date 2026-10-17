@@ -1,7 +1,7 @@
 import logging
 import time
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, Future
+from threading import Event
 from datetime import UTC, datetime
 
 import botocore.client
@@ -52,19 +52,19 @@ class Catcher(ABC):
         self,
         s3_client: botocore.client.BaseClient,
         bucket: str,
-        executor: ThreadPoolExecutor
+        stop: Event
     ):
         """Store the variables specific to this poller.
 
         Args:
             s3_client: Initialized boto3 S3 client to use for accessing S3 bucket.
             bucket: S3 bucket identifier.
-            executor: Thread pool to run on.
+            stop: Threading Event to signal the thread to stop. 
         """
 
         self.s3_client = s3_client
         self.bucket = bucket
-        self.executor = executor
+        self.stop = stop
         self.current_id = None
 
     def build_key(self, timestamp: datetime) -> str:
@@ -157,13 +157,8 @@ class Catcher(ABC):
             finally:
                 time.sleep(self.delay)
 
-    def run(self) -> Future:
+    def run(self) -> None:
         """Runs the catcher.
-
-        Uses the thread pool it was constructed with.
-
-        Returns:
-            The future the poll service is running on.
         """
 
-        return self.executor.submit(self.poll)
+        pass
