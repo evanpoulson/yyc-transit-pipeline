@@ -212,35 +212,31 @@ class Catcher(ABC):
                     self.source_url,
                     self.delay,
                 )
-            except requests.RequestException as err:
+            except requests.RequestException:
                 logger.exception(
-                    "request exception occurred on %s from %s: %s, retrying in %d seconds",
+                    "request exception occurred on %s from %s, retrying in %d seconds",
                     self.source_name,
                     self.source_url,
-                    err,
                     self.delay,
                 )
-            except botocore.exceptions.ClientError as err:
+            except botocore.exceptions.ClientError:
                 logger.exception(
-                    "S3 rejected upload of %s to %s: %s, retrying in %d seconds",
+                    "S3 rejected upload of %s to %s, retrying in %d seconds",
                     self.source_name,
                     self.bucket,
-                    err,
                     self.delay,
                 )
-            except botocore.exceptions.BotoCoreError as err:
+            except botocore.exceptions.BotoCoreError:
                 logger.exception(
-                    "could not upload %s to S3: %s, retrying in %d seconds",
+                    "could not upload %s to S3, retrying in %d seconds",
                     self.source_name,
-                    err,
                     self.delay,
                 )
-            except Exception as err:
+            except Exception:
                 logger.exception(
-                    "unexpected exception occurred on %s from %s: %s, retrying in %d seconds",
+                    "unexpected exception occurred on %s from %s, retrying in %d seconds",
                     self.source_name,
                     self.source_url,
-                    err,
                     self.delay,
                 )
             finally:
