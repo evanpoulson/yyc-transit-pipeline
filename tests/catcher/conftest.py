@@ -1,4 +1,8 @@
-"""Shared fixtures and builders for the catcher tests."""
+"""Shared fixtures and builders for the catcher tests.
+
+The fake_catcher fixture replaces the catchers session with a Mock
+so nothing ever touches the outbound internet.
+"""
 
 from threading import Event
 from unittest.mock import Mock
