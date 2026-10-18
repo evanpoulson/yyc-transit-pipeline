@@ -64,8 +64,9 @@ class Catcher(ABC):
         self.s3_client = s3_client
         self.bucket = bucket
         self.stop_event = stop_event
-        self.current_id: str | None = None 
-        self.session = requests.Session() # Reuses the connection for all requests resulting in less load on source and faster polls 
+        self.current_id: str | None = None
+        # Reuses the connection for all requests resulting in less load on source and faster polls.
+        self.session = requests.Session() 
 
     def sleep(self) -> None:
         """Sleeps the thread for {delay} seconds.
@@ -177,8 +178,8 @@ class Catcher(ABC):
             except requests.ReadTimeout:
                 logger.warning("read timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             except requests.RequestException:
-                logger.error("request exception on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay, exc_info=True)
+                logger.exception("request exception on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             except Exception:
-                logger.error("non-request exception occurred on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay, exc_info=True)
+                logger.exception("non-request exception occurred on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             finally:
                 self.sleep()
