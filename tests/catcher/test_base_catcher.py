@@ -1,12 +1,12 @@
 """Tests for the base catcher methods."""
 
 import time
-import pytest
 from datetime import UTC, datetime
 from unittest.mock import Mock
 
+import pytest
 import requests
-from botocore.exceptions import ClientError, BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 
 
 def test_sleep_exits_when_set(fake_catcher):
@@ -46,12 +46,12 @@ def test_fetch_response_raises(fake_catcher):
 
 def test_poll_once_skips_on_304(fake_catcher):
     response = Mock(status_code=304)
-    expected_id = "test"
+    fake_catcher.session.get.return_value = response
     fake_catcher.current_id = "test"
 
     fake_catcher.poll_once()
     fake_catcher.s3_client.put_object.assert_not_called()
-    assert expected_id == fake_catcher.current_id
+    assert fake_catcher.current_id == "test"
 
 
 def test_poll_once_stores_on_200(fake_catcher):
@@ -77,7 +77,8 @@ def test_poll_once_doesnt_update_on_error(fake_catcher):
 
     with pytest.raises(ClientError):
         fake_catcher.poll_once()
-        assert fake_catcher.current_id == "success"
+
+    assert fake_catcher.current_id == "success"
 
 
 def test_run_stops_when_event_is_set(fake_catcher):
@@ -117,13 +118,14 @@ def test_run_survives_error(fake_catcher):
 )
 def test_run_exceptions_log_levels(fake_catcher, caplog, error, expected_level):
     fake_catcher.source_name = "test-source"
+
     def stop_then_raise():
         fake_catcher.stop_event.set()
         raise error
-    
+
     fake_catcher.poll_once = Mock(side_effect=stop_then_raise)
     fake_catcher.run()
-    
+
     record = caplog.records[0]
     assert record.levelname == expected_level
     assert "test-source" in record.getMessage()
