@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from unittest.mock import Mock
 
 import requests
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, BotoCoreError
 
 
 def test_sleep_exits_when_set(fake_catcher):
@@ -78,3 +78,52 @@ def test_poll_once_doesnt_update_on_error(fake_catcher):
     with pytest.raises(ClientError):
         fake_catcher.poll_once()
         assert fake_catcher.current_id == "success"
+
+
+def test_run_stops_when_event_is_set(fake_catcher):
+    fake_catcher.poll_once = Mock(side_effect=fake_catcher.stop_event.set)
+    fake_catcher.run()
+    assert fake_catcher.poll_once.call_count == 1
+
+
+def test_run_survives_error(fake_catcher):
+    def raise_then_stop():
+        if fake_catcher.poll_once.call_count == 1:
+            raise RuntimeError("first poll fails")
+        fake_catcher.stop_event.set()
+
+    fake_catcher.poll_once = Mock(side_effect=raise_then_stop)
+
+    fake_catcher.run()
+    assert fake_catcher.poll_once.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "error, expected_level",
+    [
+        (requests.ConnectTimeout(), "WARNING"),
+        (requests.ReadTimeout(), "WARNING"),
+        (requests.HTTPError(), "ERROR"),
+        (
+            ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+                "PutObject",
+            ),
+            "ERROR",
+        ),
+        (BotoCoreError(), "ERROR"),
+        (RuntimeError("boom"), "ERROR"),
+    ],
+)
+def test_run_exceptions_log_levels(fake_catcher, caplog, error, expected_level):
+    fake_catcher.source_name = "test-source"
+    def stop_then_raise():
+        fake_catcher.stop_event.set()
+        raise error
+    
+    fake_catcher.poll_once = Mock(side_effect=stop_then_raise)
+    fake_catcher.run()
+    
+    record = caplog.records[0]
+    assert record.levelname == expected_level
+    assert "test-source" in record.getMessage()
