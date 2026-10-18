@@ -14,7 +14,7 @@ class Catcher(ABC):
 
     Each catcher defines it's own 'source name', 'source url', 'extension',
     'connection timeout', 'read timeout', and 'delay' to ensure specificity
-    to that data source. Only one instance of a catcher is used for a 
+    to that data source. Only one instance of a catcher is used for a
     particular data source.
     """
 
@@ -55,10 +55,7 @@ class Catcher(ABC):
         ...
 
     def __init__(
-        self,
-        s3_client: botocore.client.BaseClient,
-        bucket: str,
-        stop_event: Event
+        self, s3_client: botocore.client.BaseClient, bucket: str, stop_event: Event
     ):
         """Store the variables specific to this poller.
 
@@ -73,7 +70,7 @@ class Catcher(ABC):
         self.stop_event = stop_event
         self.current_id: str | None = None
         # Reuses the connection for all requests resulting in less load on source and faster polls.
-        self.session = requests.Session() 
+        self.session = requests.Session()
 
     def sleep(self) -> None:
         """Sleeps the thread for {delay} seconds.
@@ -116,10 +113,12 @@ class Catcher(ABC):
         """
 
         # Use If-None-Match header rather than head so snapshots come in the same request
-        headers = {
-            'If-None-Match': self.current_id
-        }
-        response = self.session.get(url=self.source_url, headers=headers, timeout=(self.connection_timeout, self.read_timeout))
+        headers = {"If-None-Match": self.current_id}
+        response = self.session.get(
+            url=self.source_url,
+            headers=headers,
+            timeout=(self.connection_timeout, self.read_timeout),
+        )
         response.raise_for_status()
         return response
 
@@ -158,17 +157,25 @@ class Catcher(ABC):
         """
 
         response = self.fetch_response()
-        if response.status_code == 200: # New object served
-
+        if response.status_code == 200:  # New object served
             data = response.content
             timestamp = datetime.now(UTC)
-            logger.info("%s updated, fetched new object from %s", self.source_name, self.source_url)
+            logger.info(
+                "%s updated, fetched new object from %s",
+                self.source_name,
+                self.source_url,
+            )
 
             key = self.build_key(timestamp=timestamp)
             self.store_object(key=key, data=data)
-            logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
+            logger.info(
+                "stored %s object from %s as: %s",
+                self.source_name,
+                self.source_url,
+                key,
+            )
 
-            self.current_id = response.headers['ETag']
+            self.current_id = response.headers["ETag"]
 
     def run(self) -> None:
         """Runs the catcher.
@@ -181,12 +188,32 @@ class Catcher(ABC):
             try:
                 self.poll_once()
             except requests.ConnectTimeout:
-                logger.warning("connection timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
+                logger.warning(
+                    "connection timeout on %s from %s, retrying in %d seconds",
+                    self.source_name,
+                    self.source_url,
+                    self.delay,
+                )
             except requests.ReadTimeout:
-                logger.warning("read timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
+                logger.warning(
+                    "read timeout on %s from %s, retrying in %d seconds",
+                    self.source_name,
+                    self.source_url,
+                    self.delay,
+                )
             except requests.RequestException:
-                logger.exception("request exception on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
+                logger.exception(
+                    "request exception on %s from %s, retrying in %d seconds",
+                    self.source_name,
+                    self.source_url,
+                    self.delay,
+                )
             except Exception:
-                logger.exception("non-request exception occurred on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
+                logger.exception(
+                    "non-request exception occurred on %s from %s, retrying in %d seconds",
+                    self.source_name,
+                    self.source_url,
+                    self.delay,
+                )
             finally:
                 self.sleep()
