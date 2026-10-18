@@ -17,8 +17,8 @@ class Catcher(ABC):
 
     Each catcher defines its own 'source_name', 'source_url', 'extension',
     'connection_timeout', 'read_timeout', and 'delay' to ensure specificity
-    to that data source. 
-    
+    to that data source.
+
     Only one instance of a catcher is used for a particular data source.
     """
 
@@ -75,10 +75,6 @@ class Catcher(ABC):
         self.current_id: str | None = None
         # Reuses the connection for all requests resulting in less load on source and faster polls.
         self.session = requests.Session()
-
-    def __repr__(self):
-        """Return the name of the class."""
-        return type(self).__name__
 
     def sleep(self) -> None:
         """Sleeps the thread for {delay} seconds.
