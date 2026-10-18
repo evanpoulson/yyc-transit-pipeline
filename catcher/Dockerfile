@@ -18,7 +18,8 @@ COPY config.py ./
 COPY catcher/ ./catcher/
 
 # Python runs as PID 1 and ignores SIGTERM, so stop with SIGINT instead:
-# it raises KeyboardInterrupt and the thread pool shuts down cleanly.
+# it raises KeyboardInterrupt and main sets the stop event and joins all
+# catcher threads.
 STOPSIGNAL SIGINT
 
 ENTRYPOINT [ "python", "-m", "catcher" ]
