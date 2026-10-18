@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from threading import Event
 
 import botocore.client
+import botocore.exceptions
 import requests
 
 logger = logging.getLogger(__name__)
@@ -195,30 +196,47 @@ class Catcher(ABC):
                 self.poll_once()
             except requests.ConnectTimeout:
                 logger.warning(
-                    "connection timeout on %s from %s, retrying in %d seconds",
+                    "connection timeout occurred on %s from %s, retrying in %d seconds",
                     self.source_name,
                     self.source_url,
                     self.delay,
                 )
             except requests.ReadTimeout:
                 logger.warning(
-                    "read timeout on %s from %s, retrying in %d seconds",
+                    "read timeout occurred on %s from %s, retrying in %d seconds",
                     self.source_name,
                     self.source_url,
                     self.delay,
                 )
-            except requests.RequestException:
+            except requests.RequestException as err:
                 logger.exception(
-                    "request exception on %s from %s, retrying in %d seconds",
+                    "request exception occurred on %s from %s: %s, retrying in %d seconds",
                     self.source_name,
                     self.source_url,
+                    err,
                     self.delay,
                 )
-            except Exception:
+            except botocore.exceptions.ClientError as err:
                 logger.exception(
-                    "non-request exception occurred on %s from %s, retrying in %d seconds",
+                    "S3 rejected upload of %s to %s: %s, retrying in %d seconds",
+                    self.source_name,
+                    self.bucket,
+                    err,
+                    self.delay,
+                )
+            except botocore.exceptions.BotoCoreError as err:
+                logger.exception(
+                    "could not upload %s to S3: %s, retrying in %d seconds",
+                    self.source_name,
+                    err,
+                    self.delay,
+                )
+            except Exception as err:
+                logger.exception(
+                    "unexpected exception occurred on %s from %s: %s, retrying in %d seconds",
                     self.source_name,
                     self.source_url,
+                    err,
                     self.delay,
                 )
             finally:
