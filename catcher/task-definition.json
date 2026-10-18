@@ -3,7 +3,6 @@
         {
             "name": "catcher",
             "image": "860574615377.dkr.ecr.ca-central-1.amazonaws.com/yyc-transit/catcher:placeholder",
-            "command": ["--retry-delay", "1"],
             "essential": true,
             "logConfiguration": {
                 "logDriver": "awslogs",
