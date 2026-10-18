@@ -76,6 +76,10 @@ class Catcher(ABC):
         # Reuses the connection for all requests resulting in less load on source and faster polls.
         self.session = requests.Session()
 
+    def __repr__(self):
+        """Return the name of the class."""
+        return type(self).__name__
+
     def sleep(self) -> None:
         """Sleeps the thread for {delay} seconds.
 
