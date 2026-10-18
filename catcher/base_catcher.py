@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
-from threading import Event
 from datetime import UTC, datetime
+from threading import Event
 
 import botocore.client
 import requests
@@ -51,28 +51,28 @@ class Catcher(ABC):
         self,
         s3_client: botocore.client.BaseClient,
         bucket: str,
-        stop: Event
+        stop_event: Event
     ):
         """Store the variables specific to this poller.
 
         Args:
             s3_client: Initialized boto3 S3 client to use for accessing S3 bucket.
             bucket: S3 bucket identifier.
-            stop: Threading Event to signal the thread to stop. 
+            stop_event: Threading Event to signal the thread to stop.
         """
 
         self.s3_client = s3_client
         self.bucket = bucket
-        self.stop = stop
-        self.current_id = None
+        self.stop_event = stop_event
+        self.current_id: str | None = None
 
     def sleep(self) -> None:
         """Sleeps the thread for {delay} seconds.
 
-        Replaces the functionality of time.sleep for thread objects.
+        Returns early when the flag is set.
         """
 
-        self.stop.wait(self.delay)
+        self.stop_event.wait(self.delay)
 
     def build_key(self, timestamp: datetime) -> str:
         """Builds the S3 bucket object key for a particular object at a particular time.
@@ -92,8 +92,8 @@ class Catcher(ABC):
         key = f"raw/{self.source_name}/{date_path}/{self.source_name}_{epoch}.{self.extension}"
         return key
 
-    def fetch_object(self) -> requests.Response:
-        """Fetches an object from the set url.
+    def fetch_response(self) -> requests.Response:
+        """Fetches a response from the set url.
 
         Performs the GET with an If-None-Match header checking if the data served has changed since the last poll.
         Raises on a non 2xx status code and returns the response object.
@@ -103,10 +103,10 @@ class Catcher(ABC):
 
         Raises:
             requests.RequestException: If the request fails, times out, or returns
-            a 4xx or 5xx status.
+                a 4xx or 5xx status.
         """
 
-        # Use If-None-Match header rather than head requests to prevent rate limiting
+        # Use If-None-Match header rather than head so snapshots come in the same request
         headers = {
             'If-None-Match': self.current_id
         }
@@ -114,23 +114,23 @@ class Catcher(ABC):
         response.raise_for_status()
         return response
 
-    def store_object(self, key: str, object: bytes) -> dict:
+    def store_object(self, key: str, data: bytes) -> dict:
         """Uploads an object to S3 under a specified key.
 
         Args:
             key: Key to store the object in S3 as.
-            object: Object bytes to store
+            data: Bytes to store.
 
         Returns:
             Response from the S3 put call.
         """
 
         return self.s3_client.put_object(
-            Body=object,
+            Body=data,
             Bucket=self.bucket,
             Key=key,
             ContentType="application/octet-stream",
-        )  
+        )
 
     def poll_once(self) -> None:
         """Polls the feed for new objects and stores them in S3.
@@ -140,19 +140,23 @@ class Catcher(ABC):
 
         Raises:
             requests.RequestException: If the request fails, times out, or returns
-            a 4xx or 5xx status.
+                a 4xx or 5xx status.
+            botocore.exceptions.ClientError: If S3 rejects the upload (for example,
+                access denied or a missing bucket).
+            botocore.exceptions.BotoCoreError: If the upload never reaches S3
+                (for example, no credentials or a connection failure).
+            KeyError: If a 200 response has no ETag header.
         """
 
-        response = self.fetch_object()
+        response = self.fetch_response()
         if response.status_code == 200: # New object served
-            logger.info("%s updated, processing new object", self.source_name)
 
-            object = response.content
+            data = response.content
             timestamp = datetime.now(UTC)
-            logger.info("fetched %s object from %s", self.source_name, self.source_url)
+            logger.info("%s updated, fetched new object from %s", self.source_name, self.source_url)
 
             key = self.build_key(timestamp=timestamp)
-            self.store_object(key=key, object=object)
+            self.store_object(key=key, data=data)
             logger.info("stored %s object from %s as: %s", self.source_name, self.source_url, key)
 
             self.current_id = response.headers['ETag']
@@ -160,17 +164,17 @@ class Catcher(ABC):
     def run(self) -> None:
         """Runs the catcher.
 
-        Calls poll_once() and sleeps {delay} seconds between each successful or failed poll. 
+        Calls poll_once() and sleeps {delay} seconds between each successful or failed poll.
         Catches and logs exceptions when raised to prevent thread disruption.
         """
 
-        while not self.stop.is_set():
+        while not self.stop_event.is_set():
             try:
                 self.poll_once()
             except requests.ConnectTimeout:
-                logger.error("connection timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
+                logger.warning("connection timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             except requests.ReadTimeout:
-                logger.error("read timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
+                logger.warning("read timeout on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay)
             except requests.RequestException:
                 logger.error("request exception on %s from %s, retrying in %d seconds", self.source_name, self.source_url, self.delay, exc_info=True)
             except Exception:
