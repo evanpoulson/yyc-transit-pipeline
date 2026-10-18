@@ -10,6 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 class Catcher(ABC):
+    """Base class for all catchers polling data sources for this project.
+
+    Each catcher defines it's own 'source name', 'source url', 'extension',
+    'connection timeout', 'read timeout', and 'delay' to ensure specificity
+    to that data source. Only one instance of a catcher is used for a 
+    particular data source.
+    """
 
     @property
     @abstractmethod
