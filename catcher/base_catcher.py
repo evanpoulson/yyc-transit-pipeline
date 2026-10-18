@@ -137,7 +137,6 @@ class Catcher(ABC):
                 access denied or a missing bucket).
             botocore.exceptions.BotoCoreError: If the upload never reaches S3
                 (for example, no credentials or a connection failure).
-            KeyError: If a 200 response has no ETag header.
         """
 
         return self.s3_client.put_object(
