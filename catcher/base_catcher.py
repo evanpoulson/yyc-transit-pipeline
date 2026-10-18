@@ -1,3 +1,5 @@
+"""Base catcher class that all source-specific catchers subclass."""
+
 import logging
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
@@ -13,10 +15,11 @@ logger = logging.getLogger(__name__)
 class Catcher(ABC):
     """Base class for all catchers polling data sources for this project.
 
-    Each catcher defines it's own 'source name', 'source url', 'extension',
-    'connection timeout', 'read timeout', and 'delay' to ensure specificity
-    to that data source. Only one instance of a catcher is used for a
-    particular data source.
+    Each catcher defines its own 'source_name', 'source_url', 'extension',
+    'connection_timeout', 'read_timeout', and 'delay' to ensure specificity
+    to that data source. 
+    
+    Only one instance of a catcher is used for a particular data source.
     """
 
     @property
@@ -40,13 +43,13 @@ class Catcher(ABC):
     @property
     @abstractmethod
     def connection_timeout(self) -> int:
-        """Time to wait for source connection before timing out."""
+        """Seconds to wait for source connection before timing out."""
         ...
 
     @property
     @abstractmethod
     def read_timeout(self) -> int:
-        """Time to wait between bytes before timing out."""
+        """Seconds to wait between bytes before timing out."""
         ...
 
     @property
@@ -103,7 +106,7 @@ class Catcher(ABC):
         """Fetches a response from the set url.
 
         Performs the GET with an If-None-Match header checking if the data served has changed since the last poll.
-        Raises on a non 2xx status code and returns the response object.
+        Raises on a non 4xx or 5xx status code and returns the response object.
 
         Returns:
             The response object.
@@ -152,6 +155,7 @@ class Catcher(ABC):
 
         Checks the ETag header (File ID for Socrata) to determine when a new object has been served.
         When a new object has been served it's stored in S3.
+        Only updates the current_id after the upload succeeds.
 
         Raises:
             requests.RequestException: If the request fails, times out, or returns
