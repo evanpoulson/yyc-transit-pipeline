@@ -64,7 +64,8 @@ class Catcher(ABC):
         self.s3_client = s3_client
         self.bucket = bucket
         self.stop_event = stop_event
-        self.current_id: str | None = None
+        self.current_id: str | None = None 
+        self.session = requests.Session() # Reuses the connection for all requests resulting in less load on source and faster polls 
 
     def sleep(self) -> None:
         """Sleeps the thread for {delay} seconds.
@@ -110,7 +111,7 @@ class Catcher(ABC):
         headers = {
             'If-None-Match': self.current_id
         }
-        response = requests.get(url=self.source_url, headers=headers, timeout=(self.connection_timeout, self.read_timeout))
+        response = self.session.get(url=self.source_url, headers=headers, timeout=(self.connection_timeout, self.read_timeout))
         response.raise_for_status()
         return response
 
