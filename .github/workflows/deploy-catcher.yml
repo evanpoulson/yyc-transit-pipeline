@@ -3,7 +3,7 @@ name: yyc-transit-catcher-deploy CD
 on:
     push:
         branches: [ "main" ]
-        paths: [ "catcher/**", "config.py", "pyproject.toml", "uv.lock", ".github/workflows/deploy-catcher.yml" ]
+        paths: [ "catcher/**", "pyproject.toml", "uv.lock", ".github/workflows/deploy-catcher.yml" ]
     workflow_dispatch:
 
 concurrency:

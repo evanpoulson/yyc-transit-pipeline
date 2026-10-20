@@ -15,7 +15,6 @@ COPY compactor/pyproject.toml ./compactor/
 RUN uv sync --frozen --no-dev --no-cache --package compactor
 
 RUN python -c "import duckdb; conn = duckdb.connect(); conn.execute('INSTALL httpfs; INSTALL aws;')"
-COPY config.py ./
 COPY compactor/ ./compactor/
 
 ENTRYPOINT [ "python", "-m", "compactor" ]

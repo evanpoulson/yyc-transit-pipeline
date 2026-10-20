@@ -2,15 +2,14 @@
 
 parse_day and resolve_target_day decide which day a run compacts, and the
 default (yesterday, UTC) is the path a scheduled nightly run takes, so it is
-worth pinning. The COMPACTORS registry must cover every configured feed, or a
-captured feed would be silently left out of the curated layer.
+worth pinning. Each COMPACTORS key must match its class's feed_name, since the
+key is the --feed choice and feed_name is the S3 prefix the class reads.
 """
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
-import config
 from compactor import __main__ as cli
 
 
@@ -32,9 +31,9 @@ def test_resolve_target_day_passes_through_a_given_day():
     assert cli.resolve_target_day(given) is given
 
 
-def test_compactors_cover_every_configured_feed():
-    # A feed captured but not compacted would be silently absent from curated.
-    assert set(cli.COMPACTORS) == set(config.FEEDS)
+def test_compactor_keys_match_feed_names():
+    for name, cls in cli.COMPACTORS.items():
+        assert cls.feed_name == name
 
 
 def test_defaults(monkeypatch):

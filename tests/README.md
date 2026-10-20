@@ -15,8 +15,8 @@ Run from the repo root:
 uv run pytest
 ```
 
-`pytest.ini` puts the repo root on the path, so tests import `catcher`,
-`compactor`, and `config` exactly as the services do at runtime. Install every
+`pytest.ini` puts the repo root on the path, so tests import `catcher` and
+`compactor` exactly as the services do at runtime. Install every
 member's dependencies plus the dev group first with `uv sync --all-packages`.
 
 The catcher tests build real GTFS-RT payloads and drive the fetch loop with a
@@ -26,7 +26,7 @@ exercised without touching the network or S3.
 The compactor tests build real protobuf entities and flatten them through
 `shape_entity`, so the presence checks (an absent field is None, an explicit
 zero is kept) are covered directly, along with the schema-to-shape consistency,
-the coverage and failure-rate metrics, the concurrent `fetch_rows` failure
+the discovery and failure-rate metrics, the concurrent `fetch_rows` failure
 counting (via a small FakeS3), the empty-day guard and empty-hour skip in
 `write_hours`, and the hourly-file merge in `write_curated` (dedupe, sort,
 schema, and footer metadata, run on a real DuckDB connection). A saved

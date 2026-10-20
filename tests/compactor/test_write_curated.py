@@ -119,12 +119,10 @@ def test_merge_stamps_the_run_metrics_into_the_footer(helpers, merge, vp_compact
     footer = {k.decode(): v.decode() for k, v in raw.items() if k != b"ARROW:schema"}
     assert footer["feed_name"] == "vehicle_positions"
     assert footer["day"] == "2026-03-09"
-    assert footer["expected"] == "4320"
     assert footer["discovered"] == "4000"
     assert footer["succeeded"] == "3990"
     assert footer["download_failed"] == "4"
     assert footer["parse_failed"] == "6"
-    assert footer["coverage"] == "0.9259"
     assert footer["failure_rate"] == "0.0025"
     assert "build_ts" in footer
 

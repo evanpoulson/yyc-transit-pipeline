@@ -41,8 +41,7 @@ Python, AWS (S3, EC2), DuckDB, PyArrow, dbt, Dagster, Terraform.
 
 ## Running
 
-Both services are packages run with `-m` from the repo root, so `config.py`
-resolves the same way for either:
+Both services are packages run with `-m` from the repo root:
 
 ```
 python -m catcher

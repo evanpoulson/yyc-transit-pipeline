@@ -6,7 +6,7 @@ connection with a capped memory limit and an S3 secret resolved through the AWS
 credential chain, and a thread pool — then runs either one named feed's
 compactor or all of them.
 
-Run as a module from the repo root so `config.py` resolves:
+Run as a module from the repo root:
 
     python -m compactor --day 2026-09-15
     python -m compactor --day 2026-09-15 --feed vehicle_positions
@@ -24,10 +24,12 @@ import boto3
 import duckdb
 from botocore.config import Config
 
-import config
 from compactor.sub_compactors import service_alerts, trip_updates, vehicle_positions
 
 logger = logging.getLogger(__name__)
+
+BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
+REGION = "ca-central-1"
 
 # Feed name -> compactor class. Also the source of the --feed CLI choices, so
 # the CLI cannot drift from the set of implemented feeds.
@@ -108,15 +110,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
     )
 
-    # Warn if the catcher captures feeds this compactor has no class for, so a
-    # newly-added feed is not silently left uncompacted.
-    unhandled = set(config.FEEDS) - set(COMPACTORS)
-    if unhandled:
-        logger.warning("Feeds captured but not compacted: %s", sorted(unhandled))
-
-    bucket = config.BUCKET
-    region = config.REGION
-    s3 = boto3.client("s3", region_name=region, config=Config(max_pool_connections=32))
+    s3 = boto3.client("s3", region_name=REGION, config=Config(max_pool_connections=32))
 
     # One DuckDB connection and one thread pool for the whole run. The pool is
     # sized to match botocore's connection pool so downloads run concurrently
@@ -129,13 +123,13 @@ def main() -> None:
         db.execute(f"""
             CREATE OR REPLACE SECRET s3_secret (
                 TYPE s3,
-                REGION '{region}',
+                REGION '{REGION}',
                 PROVIDER credential_chain,
                 REFRESH auto
             )
         """)
 
-        compactors = {name: cls(s3, bucket, executor, db) for name, cls in COMPACTORS.items()}
+        compactors = {name: cls(s3, BUCKET, executor, db) for name, cls in COMPACTORS.items()}
 
         if feed is not None:
             compactors[feed].run(day)
