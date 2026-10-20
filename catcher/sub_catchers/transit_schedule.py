@@ -8,7 +8,7 @@ class TransitScheduleCatcher(Catcher):
     source_url = (
         "https://data.calgary.ca/download/npk7-z3bj/application%2Fx-zip-compressed"
     )
-    extension = "pb"
+    extension = "zip"
     connection_timeout = 300
     read_timeout = 600
     delay = 86400
