@@ -1,6 +1,6 @@
 """Tests for Compactor.fetch_rows: concurrent download, parse, and accounting.
 
-fetch_rows is where the coverage and quality metrics come from, so the counting
+fetch_rows is where the discovery and failure metrics come from, so the counting
 has to be exact and one bad snapshot must not sink the batch. A download failure
 and a parse failure are counted separately and skipped; the good snapshots in
 the same batch still come through.

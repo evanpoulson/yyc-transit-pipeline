@@ -3,7 +3,7 @@ name: yyc-transit-compactor-deploy CD
 on:
     push:
         branches: [ "main" ]
-        paths: [ "compactor/**", "config.py", "pyproject.toml", "uv.lock", ".github/workflows/deploy-compactor.yml" ]
+        paths: [ "compactor/**", "pyproject.toml", "uv.lock", ".github/workflows/deploy-compactor.yml" ]
     workflow_dispatch:
 
 concurrency:

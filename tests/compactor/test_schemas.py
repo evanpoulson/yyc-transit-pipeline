@@ -10,7 +10,6 @@ clean typed build across all three feeds catches that drift.
 import pyarrow as pa
 import pytest
 
-import config
 from compactor import __main__ as cli
 from compactor.schemas import SCHEMAS
 
@@ -18,8 +17,8 @@ FEEDS = ["vehicle_positions", "trip_updates", "service_alerts"]
 
 
 def test_feeds_schemas_and_compactors_line_up():
-    assert set(SCHEMAS) == set(config.FEEDS)
-    assert set(cli.COMPACTORS) == set(config.FEEDS)
+    assert set(SCHEMAS) == set(FEEDS)
+    assert set(cli.COMPACTORS) == set(FEEDS)
 
 
 @pytest.mark.parametrize("feed", FEEDS)

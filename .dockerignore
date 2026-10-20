@@ -2,7 +2,6 @@
 *
 
 # Base requirements
-!config.py
 !pyproject.toml
 !uv.lock
 

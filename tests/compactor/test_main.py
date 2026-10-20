@@ -15,8 +15,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-import config
 from compactor import __main__ as cli
+
+FEEDS = sorted(cli.COMPACTORS)
 
 
 class FakeDB:
@@ -78,8 +79,8 @@ def run_main(monkeypatch):
 def test_main_runs_every_feed_for_the_given_day(run_main):
     _, calls = run_main(["--day", "2026-09-21"])
     day = datetime(2026, 9, 21, tzinfo=UTC)
-    assert sorted(name for name, _, _ in calls) == sorted(config.FEEDS)
-    assert all(d == day and bucket == config.BUCKET for _, d, bucket in calls)
+    assert sorted(name for name, _, _ in calls) == FEEDS
+    assert all(d == day and bucket == cli.BUCKET for _, d, bucket in calls)
 
 
 def test_main_runs_only_the_named_feed(run_main):
@@ -90,7 +91,7 @@ def test_main_runs_only_the_named_feed(run_main):
 def test_one_failing_feed_does_not_stop_the_others(run_main, caplog):
     with caplog.at_level(logging.ERROR):
         _, calls = run_main(["--day", "2026-09-21"], failing=("trip_updates",))
-    assert sorted(name for name, _, _ in calls) == sorted(config.FEEDS)
+    assert sorted(name for name, _, _ in calls) == FEEDS
     assert "Failed to compact trip_updates" in caplog.text
 
 
@@ -100,9 +101,9 @@ def test_duckdb_is_capped_and_can_reach_the_bucket(run_main):
     assert db.sql_containing("SET memory_limit = '6GB'")
     assert db.sql_containing("SET threads TO 3")
     [secret] = db.sql_containing("CREATE OR REPLACE SECRET")
-    # The bucket lives in config.REGION; a secret without it signs for
+    # The bucket lives in cli.REGION; a secret without it signs for
     # us-east-1 wherever AWS_REGION is not set (the laptop).
-    assert f"'{config.REGION}'" in secret
+    assert f"'{cli.REGION}'" in secret
     assert "credential_chain" in secret
 
 

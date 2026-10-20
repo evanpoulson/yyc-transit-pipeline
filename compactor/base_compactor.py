@@ -27,8 +27,6 @@ import pyarrow.parquet as pq
 from google.protobuf import message
 from google.transit import gtfs_realtime_pb2
 
-import config
-
 logger = logging.getLogger(__name__)
 
 
@@ -49,7 +47,7 @@ class Compactor(ABC):
     @property
     @abstractmethod
     def feed_name(self) -> str:
-        """Short feed identifier, matching config.FEEDS and the S3 key prefix."""
+        """Short feed identifier, matching the S3 key prefix."""
         ...
 
     @property
@@ -84,7 +82,6 @@ class Compactor(ABC):
         self.executor = executor
         self.db = db
 
-        self.expected = config.EXPECTED_SNAPSHOTS
         self.discovered = 0
         self.succeeded = 0
         self.download_failed = 0
@@ -133,13 +130,6 @@ class Compactor(ABC):
         if self.discovered == 0:
             return 0.0
         return self.failed / self.discovered
-
-    @property
-    def coverage(self) -> float:
-        """Fraction of the day's expected snapshots that were discovered, in [0, 1]."""
-        if self.discovered == 0:
-            return 0.0
-        return self.discovered / self.expected
 
     def build_prefix(self, layer: str, feed: str, target_day: datetime) -> str:
         """Build the S3 key prefix (raw) or full object key (curated) for a feed and day.
@@ -261,7 +251,7 @@ class Compactor(ABC):
         Dispatches every key to the shared thread pool, since per-object S3
         GETs are latency-bound. Download and parse failures are counted
         separately and skipped, so one bad snapshot does not sink the batch;
-        the counts feed the run's coverage and failure metrics.
+        the counts feed the run's discovered and failure metrics.
 
         Args:
             paths: Raw object keys to fetch (typically one hour's worth).
@@ -383,12 +373,10 @@ class Compactor(ABC):
                 build_ts: '{datetime.now(UTC).isoformat()}',
                 feed_name: '{self.feed_name}',
                 day: '{target_day.strftime("%Y-%m-%d")}',
-                expected: '{self.expected}',
                 discovered: '{self.discovered}',
                 succeeded: '{self.succeeded}',
                 download_failed: '{self.download_failed}',
                 parse_failed: '{self.parse_failed}',
-                coverage: '{self.coverage:.4f}',
                 failure_rate: '{self.failure_rate:.4f}'
             }});
             """
@@ -415,7 +403,7 @@ class Compactor(ABC):
         """Compact one day of this feed, end to end.
 
         Validates the sort keys, resets counters, writes the day's hourly
-        Parquet files, logs the coverage and failure metrics, and writes the
+        Parquet files, logs the discovery and failure metrics, and writes the
         curated file. There is deliberately no failure-rate gate: the metrics
         are recorded in the footer and the decision to trust a partition is
         left to downstream. An empty day, or an hour that yields no rows,
@@ -432,9 +420,9 @@ class Compactor(ABC):
         self.write_hours(day)
 
         logger.info(
-            "%s: %.2f%% snapshot coverage, %.2f%% snapshots failed (%d download failures, %d parse failures)",
+            "%s: %d snapshots discovered, %.2f%% failed (%d download failures, %d parse failures)",
             self.feed_name,
-            self.coverage * 100,
+            self.discovered,
             self.failure_rate * 100,
             self.download_failed,
             self.parse_failed,

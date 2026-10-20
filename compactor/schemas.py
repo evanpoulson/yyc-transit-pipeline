@@ -19,7 +19,7 @@ inference would pick:
   timestamp, which keeps its own meaning (and on trip_updates is never set by
   Calgary).
 
-Keyed by feed name, matching each Compactor.feed_name and config.FEEDS.
+Keyed by feed name, matching each Compactor.feed_name.
 """
 
 import pyarrow as pa

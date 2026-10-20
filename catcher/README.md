@@ -1,7 +1,7 @@
 # catcher
 
 Polls Calgary Transit's GTFS-RT feeds (vehicle_positions, trip_updates,
-service_alerts) every `config.POLL_SECONDS` and writes every raw snapshot to S3
+service_alerts) on each catcher's own `delay` and writes every raw snapshot to S3
 as immutable, uncompressed protobuf bytes. Each fetch is checked for a
 parseable `FeedMessage`, but that check is a retry trigger, not a gate: Calgary
 occasionally serves a truncated payload under an HTTP 200, so a bad parse drives
