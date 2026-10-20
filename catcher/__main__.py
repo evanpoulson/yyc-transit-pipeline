@@ -9,7 +9,12 @@ import time
 
 import boto3
 
-from catcher.sub_catchers import service_alerts, trip_updates, vehicle_positions
+from catcher.sub_catchers import (
+    service_alerts,
+    transit_schedule,
+    trip_updates,
+    vehicle_positions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +37,13 @@ def main() -> None:
         service_alerts.ServiceAlertsCatcher(
             s3_client=s3, bucket=BUCKET, stop_event=stop
         ),
-        trip_updates.TripUpdatesCatcher(s3_client=s3, bucket=BUCKET, stop_event=stop),
+        trip_updates.TripUpdatesCatcher(
+            s3_client=s3, bucket=BUCKET, stop_event=stop
+        ),
         vehicle_positions.VehiclePositionsCatcher(
+            s3_client=s3, bucket=BUCKET, stop_event=stop
+        ),
+        transit_schedule.TransitScheduleCatcher(
             s3_client=s3, bucket=BUCKET, stop_event=stop
         ),
     ]
