@@ -14,7 +14,6 @@ COPY catcher/pyproject.toml ./catcher/
 COPY compactor/pyproject.toml ./compactor/
 RUN uv sync --frozen --no-dev --no-cache --package catcher
 
-COPY config.py ./
 COPY catcher/ ./catcher/
 
 # Python runs as PID 1 and ignores SIGTERM, so stop with SIGINT instead:
