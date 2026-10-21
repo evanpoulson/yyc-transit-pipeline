@@ -4,6 +4,7 @@ Each subcatcher is run and maintained on its own thread.
 """
 
 import logging
+import os
 import threading
 import time
 
@@ -18,8 +19,8 @@ from catcher.sub_catchers import (
 
 logger = logging.getLogger(__name__)
 
-BUCKET = "yyc-transit-lake-860574615377-ca-central-1-an"
-REGION = "ca-central-1"
+BUCKET = os.environ["S3_BUCKET_NAME"]
+REGION = os.environ["AWS_REGION"]
 HEALTH_CHECK_SECONDS = 10
 SHUTDOWN_TIMEOUT_SECONDS = 20
 
@@ -37,9 +38,7 @@ def main() -> None:
         service_alerts.ServiceAlertsCatcher(
             s3_client=s3, bucket=BUCKET, stop_event=stop
         ),
-        trip_updates.TripUpdatesCatcher(
-            s3_client=s3, bucket=BUCKET, stop_event=stop
-        ),
+        trip_updates.TripUpdatesCatcher(s3_client=s3, bucket=BUCKET, stop_event=stop),
         vehicle_positions.VehiclePositionsCatcher(
             s3_client=s3, bucket=BUCKET, stop_event=stop
         ),
