@@ -38,7 +38,9 @@ def main() -> None:
         service_alerts.ServiceAlertsCatcher(
             s3_client=s3, bucket=BUCKET, stop_event=stop
         ),
-        trip_updates.TripUpdatesCatcher(s3_client=s3, bucket=BUCKET, stop_event=stop),
+        trip_updates.TripUpdatesCatcher(
+            s3_client=s3, bucket=BUCKET, stop_event=stop
+        ),
         vehicle_positions.VehiclePositionsCatcher(
             s3_client=s3, bucket=BUCKET, stop_event=stop
         ),
