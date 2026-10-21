@@ -5,7 +5,7 @@ import logging
 import os
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, datetime
+from datetime import date
 
 import botocore.client
 import botocore.exceptions
@@ -28,7 +28,8 @@ class TripUpdatesLoader():
         s3_client: botocore.client.BaseClient, 
         bucket: str, 
         thread_pool: ThreadPoolExecutor, 
-        db: duckdb.DuckDBPyConnection
+        db: duckdb.DuckDBPyConnection,
+        target_date: date
     ):
         """Store the variables specific to this loader.
 
@@ -37,12 +38,14 @@ class TripUpdatesLoader():
             bucket: S3 bucket identifier.
             thread_pool: Thread pool executor for concurrent operations.
             db: DuckDB engine connection to use for writing parquet.
+            target_date: Date to run the bronze load on.
         """
         
         self.s3_client = s3_client
         self.bucket = bucket
         self.thread_pool = thread_pool
         self.db = db
+        self.target_date = target_date
 
     def get_raw_object(self, key: str) -> bytes:
         """Download one raw object and return its bytes.
@@ -65,6 +68,23 @@ class TripUpdatesLoader():
             Key=key,
         )
         return response["Body"].read()
+
+    def build_bronze_key(self, table: str) -> str:
+        """Builds the S3 key for a bronze object at a provided time.
+
+        Produces a partition-friendly, unique key of the form
+        bronze/<source_name>/<table>/<date=xxxx-xx-xx/<table>.parquet
+
+        Args:
+            table: Table the file will be stored as (capture_log or data).
+
+        Returns:
+            The S3 key string with no leading slash or bucket name.
+        """
+
+        date_path = f"date={self.target_date.isoformat()}"
+        key = f"bronze/{self.source_name}/{table}/{date_path}/{table}.parquet"
+        return key
 
     def store_bronze_object(self, key: str, data: bytes) -> dict:
         """Uploads a bronze object to S3 under the provided key.
