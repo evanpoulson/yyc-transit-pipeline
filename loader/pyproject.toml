@@ -1,0 +1,11 @@
+[project]
+name = "loader"
+version = "0.1.0"
+description = "Parses and loads raw GTFS-RT snapshots into bronze layer Parquet"
+requires-python = ">=3.11"
+dependencies = [
+
+]
+
+[tool.uv]
+package = false
