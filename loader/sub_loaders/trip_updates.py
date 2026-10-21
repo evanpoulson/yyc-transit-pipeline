@@ -18,8 +18,8 @@ from google.transit import gtfs_realtime_pb2
 class TripUpdatesLoader():
 
     source_name = "trip_updates" # The name of the data source being loaded into bronze
-    # The url of where the raw is being stored in S3
-    source_url = "raw/trip_updates" 
+    # The path of where the raw is being stored in S3
+    source_path = "raw/trip_updates/" 
     # The file extension raw is stored as in S3
     raw_extension = "pb"
 
@@ -46,6 +46,31 @@ class TripUpdatesLoader():
         self.thread_pool = thread_pool
         self.db = db
         self.target_date = target_date
+
+    def get_raw_paths(self) -> list[str]:
+        """List every raw object key for this feed on the target day.
+
+        Args:
+            target_day: The day to list.
+
+        Returns:
+            All raw object keys under the day's prefix, possibly empty.
+        """
+
+        date_path = self.target_date.strftime("%Y/%m/%d")
+        prefix = f"raw/{self.source_name}/{date_path}/"
+
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        page_iterator = paginator.paginate(Bucket=self.bucket, Prefix=prefix)
+
+        paths = []
+        for page in page_iterator:
+            # 'Contents' is absent when a page (or the whole prefix) is empty.
+            if "Contents" in page:
+                for obj in page["Contents"]:
+                    paths.append(obj["Key"])
+
+        return paths
 
     def get_raw_object(self, key: str) -> bytes:
         """Download one raw object and return its bytes.
