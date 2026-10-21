@@ -43,3 +43,25 @@ class TripUpdatesLoader():
         self.bucket = bucket
         self.thread_pool = thread_pool
         self.db = db
+
+    def get_raw_object(self, key: str) -> bytes:
+        """Download one raw object and return its bytes.
+
+        Args:
+            key: The S3 object key.
+
+        Returns:
+            The object's raw bytes.
+
+        Raises:
+            botocore.exceptions.ClientError: Server side. If S3 rejects the download 
+                (for example, access denied or a missing bucket).
+            botocore.exceptions.BotoCoreError: Client Side. If the download never reaches 
+                S3 (for example, no credentials or a connection failure).
+        """
+
+        response = self.s3_client.get_object(
+            Bucket=self.bucket,
+            Key=key,
+        )
+        return response["Body"].read()
