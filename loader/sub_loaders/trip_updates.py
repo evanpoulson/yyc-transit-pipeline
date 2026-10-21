@@ -65,3 +65,27 @@ class TripUpdatesLoader():
             Key=key,
         )
         return response["Body"].read()
+
+    def store_bronze_object(self, key: str, data: bytes) -> dict:
+        """Uploads a bronze object to S3 under the provided key.
+
+        Args:
+            key: Key to store the object in S3 as.
+            data: Bytes to store.
+
+        Returns:
+            Response from the S3 put call.
+
+        Raises:
+            botocore.exceptions.ClientError: If S3 rejects the upload (for example,
+                access denied or a missing bucket).
+            botocore.exceptions.BotoCoreError: If the upload never reaches S3
+                (for example, no credentials or a connection failure).
+        """
+
+        return self.s3_client.put_object(
+            Body=data,
+            Bucket=self.bucket,
+            Key=key,
+            ContentType="application/octet-stream",
+        )
