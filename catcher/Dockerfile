@@ -1,5 +1,5 @@
-FROM python:3.11-slim
-COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /bin/uv
+FROM python:3.15.1-slim
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /bin/uv
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV UV_PYTHON_DOWNLOADS=never
