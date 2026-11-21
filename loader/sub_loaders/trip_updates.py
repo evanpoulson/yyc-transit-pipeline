@@ -58,7 +58,7 @@ class TripUpdatesLoader():
         """
 
         date_path = self.target_date.strftime("%Y/%m/%d")
-        prefix = f"raw/{self.source_name}/{date_path}/"
+        prefix = f"{self.source_path}{date_path}/"
 
         paginator = self.s3_client.get_paginator("list_objects_v2")
         page_iterator = paginator.paginate(Bucket=self.bucket, Prefix=prefix)
@@ -71,24 +71,6 @@ class TripUpdatesLoader():
                     paths.append(obj["Key"])
 
         return paths
-
-    def group_raw_paths(self, paths: list[str]) -> dict[str, list[str]]:
-        """Group raw object keys by their hour prefix.
-
-        Keys are grouped by the hourso the day can be processed
-        one hour at a time to bound memory.
-
-        Args:
-            paths: Raw object keys for a day.
-
-        Returns:
-            Mapping of hour prefix to the keys under it.
-        """
-        hours = defaultdict(list)
-        for key in paths:
-            hour = key.split(sep="/")[-2]
-            hours[hour].append(key)
-        return dict(hours)
 
     def get_raw_object(self, key: str) -> bytes:
         """Download one raw object and return its bytes.
