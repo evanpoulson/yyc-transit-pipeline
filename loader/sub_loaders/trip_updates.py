@@ -148,3 +148,6 @@ class TripUpdatesLoader():
             Key=key,
             ContentType="application/octet-stream",
         )
+
+def run():
+    pass
