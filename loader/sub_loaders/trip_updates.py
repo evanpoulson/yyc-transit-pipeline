@@ -2,7 +2,8 @@
 
 import itertools
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
 
 import botocore.client
@@ -42,13 +43,15 @@ class TripUpdatesLoader():
         self.target_date = target_date
 
     def get_raw_paths(self) -> list[str]:
-        """List every raw object key for this feed on the target day.
+        """List every raw object key for this feed on the target date.
 
-        Args:
-            target_day: The day to list.
+        Lists objects under ``<source_path><YYYY>/<MM>/<DD>/`` and filters to
+        keys ending with ``.<raw_extension>`` so directory markers and stray
+        files are excluded while empty captures are preserved.
 
         Returns:
-            All raw object keys under the day's prefix, possibly empty.
+            All matching raw object keys for the target date in chronological
+            (lexicographical) order, possibly empty.
         """
 
         date_path = self.target_date.strftime("%Y/%m/%d")
@@ -63,7 +66,7 @@ class TripUpdatesLoader():
             for obj in page.get("Contents", []):
                 key = obj["Key"]
                 if key.endswith(suffix):
-                    paths.append(obj["Key"])
+                    paths.append(key)
 
         return paths
 
@@ -89,8 +92,24 @@ class TripUpdatesLoader():
         )
         return response["Body"].read()
 
-    def iter_raw_objects(self, keys: list[str], max_in_flight: int = 16):
-        """
+    def iter_raw_objects(
+        self, keys: list[str], max_in_flight: int = 16
+    ) -> Iterator[tuple[str, Future[bytes]]]:
+        """Download raw objects concurrently using a bounded sliding window.
+
+        Keeps at most ``max_in_flight`` S3 downloads pending at a time so raw
+        bytes do not accumulate in memory faster than the caller can parse
+        them, while preserving the input key order.
+
+        Args:
+            keys: Raw S3 object keys to download, in the order to yield them.
+            max_in_flight: Maximum number of concurrent downloads to keep
+                queued in the sliding window.
+
+        Yields:
+            Tuples of ``(key, future)`` in the same order as ``keys``, where
+            ``future`` resolves to the object's raw bytes (or raises a
+            download exception when ``future.result()`` is called).
         """
 
         key_iter = iter(keys)
@@ -98,21 +117,21 @@ class TripUpdatesLoader():
 
         # Pre-load the deque 
         for key in itertools.islice(key_iter, max_in_flight):
-            pending.append(key, self.thread_pool.submit(self.get_raw_object, key))
+            pending.append((key, self.thread_pool.submit(self.get_raw_object, key)))
 
         while pending:
             key, future = pending.popleft()
             next_key = next(key_iter, None)
             if next_key is not None:
-                pending.append(key, self.thread_pool.submit(self.get_raw_object, key))
+                pending.append((next_key, self.thread_pool.submit(self.get_raw_object, next_key)))
 
             yield key, future
 
     def build_bronze_key(self, table: str) -> str:
-        """Builds the S3 key for a bronze object at a provided time.
+        """Builds the S3 key for a bronze object on the target date.
 
         Produces a partition-friendly, unique key of the form
-        bronze/<source_name>/<table>/<date=xxxx-xx-xx/<table>.parquet
+        ``bronze/<source_name>/<table>/date=YYYY-MM-DD/<table>.parquet``.
 
         Args:
             table: Table the file will be stored as (capture_log or data).
