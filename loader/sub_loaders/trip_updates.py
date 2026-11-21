@@ -59,15 +59,16 @@ class TripUpdatesLoader():
 
         date_path = self.target_date.strftime("%Y/%m/%d")
         prefix = f"{self.source_path}{date_path}/"
+        suffix = f".{self.raw_extension}"
 
         paginator = self.s3_client.get_paginator("list_objects_v2")
         page_iterator = paginator.paginate(Bucket=self.bucket, Prefix=prefix)
 
         paths = []
         for page in page_iterator:
-            # 'Contents' is absent when a page (or the whole prefix) is empty.
-            if "Contents" in page:
-                for obj in page["Contents"]:
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if key.endswith(suffix):
                     paths.append(obj["Key"])
 
         return paths
