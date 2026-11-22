@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
 from tempfile import TemporaryDirectory
+from typing import Literal
 
 import botocore.client
 import botocore.exceptions
@@ -329,22 +330,40 @@ class TripUpdatesLoader():
         writer.write_table(table)
         batches.clear()
 
-    def build_bronze_key(self, table: str) -> str:
-        """Builds the S3 key for a bronze object on the target date.
+    def build_key(
+        self,
+        layer: Literal["bronze", "archive"],
+        table: str | None = None,
+    ) -> str:
+        """Build the S3 object key for a bronze table or raw archive on the target date.
 
-        Produces a partition-friendly, unique key of the form
-        ``bronze/<source_name>/<table>/date=YYYY-MM-DD/<table>.parquet``.
+        Produces a partition-friendly key scoped to the requested lakehouse
+        layer:
+
+        - ``bronze``: ``bronze/<source_name>/<table>/date=YYYY-MM-DD/<table>.parquet``
+        - ``archive``: ``archive/<source_name>/date=YYYY-MM-DD/raw.tar.zst``
 
         Args:
-            table: Table the file will be stored as (capture_log or data).
+            layer: Destination data lake layer (``"bronze"`` or ``"archive"``).
+            table: Table name within the bronze layer (for example, ``"data"``
+                or ``"capture_log"``). Required when ``layer == "bronze"``.
 
         Returns:
-            The S3 key string with no leading slash or bucket name.
+            The S3 object key with no leading slash or bucket name.
+
+        Raises:
+            ValueError: If ``layer`` is unsupported, or if ``layer == "bronze"``
+                and ``table`` is not provided.
         """
 
         date_path = f"date={self.target_date.isoformat()}"
-        key = f"bronze/{self.source_name}/{table}/{date_path}/{table}.parquet"
-        return key
+        if layer == "bronze":
+            if not table:
+                raise ValueError("table is required when layer is 'bronze'")
+            return f"bronze/{self.source_name}/{table}/{date_path}/{table}.parquet"
+        if layer == "archive":
+            return f"archive/{self.source_name}/{date_path}/raw.tar.zst"
+        raise ValueError(f"Unsupported layer: {layer!r}")
 
     def run(self) -> None:
         """Load one day of raw snapshots into the bronze layer on S3.
@@ -415,8 +434,15 @@ class TripUpdatesLoader():
                 self.s3_client.upload_file(
                     Filename=data_path,    
                     Bucket=self.bucket,
-                    Key=self.build_bronze_key("data"),
+                    Key=self.build_key(layer="bronze", table="data"),
                     ExtraArgs={"ContentType": "application/octet-stream"}, 
                 )
+
+            self.s3_client.upload_file(
+                Filename=archive_path,    
+                Bucket=self.bucket,
+                Key=self.build_key(layer="archive"),
+                ExtraArgs={"ContentType": "application/zstd"}, 
+            )
 
         #TODO: log for completeness
