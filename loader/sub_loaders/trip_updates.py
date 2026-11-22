@@ -169,4 +169,30 @@ class TripUpdatesLoader():
         )
 
 def run():
-    pass
+    """"""
+
+    # here we want to get all the keys for the raw objects
+
+    # then here we want to open a parquet file with a context manager something like:
+    # with pq.ParquetWriter(...) as ...
+
+        # here we're likely going to want a loop, decoding keys and writing them to a buffer until 
+        # the buffer has 250,000 - 500,000 rows and then writes it as a batch
+        # we're going to want the buffer to be columnar (dict[str, list]) 
+
+            # so here we'd want to get a key and it's future for decoding,
+            # making sure that we're catching this in a try block for potential errors
+            # from the futures
+
+            # then we're going to want to actually decode that future according to this loaders
+            # schema and write it's rows to the buffer
+
+            # then we're going to want to convert the buffer to a recordbatch,
+            # write the batch, and then reset the buffer to free up memory
+
+            # rinse repeat
+
+    # here we're going to want to store the full parquet file to s3
+    # the file will maybe be a bit too big to upload with put object,
+    # it might be better to write it to a temp directory then upload_file 
+    # to s3 or it might be better to stream it with pyarrow
