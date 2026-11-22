@@ -1,6 +1,8 @@
 """Bronze loader for the trip_updates GTFS-RT feed."""
 
+import io
 import itertools
+import tarfile
 from collections import deque
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -304,6 +306,29 @@ class TripUpdatesLoader():
         batch = pa.RecordBatch.from_pydict(buf, schema=self.data_schema)
         return header_timestamp, batch
 
+    def flush_batch(
+        self,
+        writer: pq.ParquetWriter,
+        batches: list[pa.RecordBatch],
+        schema: pa.Schema,
+    ) -> None:
+        """Write accumulated Arrow batches as one Parquet row group and clear them.
+
+        Combines ``batches`` into a zero-copy ``pyarrow.Table`` using ``schema``,
+        appends it to ``writer`` as a single row group, and clears ``batches`` in
+        place so the buffered Arrow memory can be released immediately.
+
+        Args:
+            writer: Open ``ParquetWriter`` receiving the row group.
+            batches: Non-empty list of ``RecordBatch`` objects to flush; cleared
+                in place after writing.
+            schema: Explicit PyArrow schema matching ``writer`` and ``batches``.
+        """
+
+        table = pa.Table.from_batches(batches, schema=schema)
+        writer.write_table(table)
+        batches.clear()
+
     def build_bronze_key(self, table: str) -> str:
         """Builds the S3 key for a bronze object on the target date.
 
@@ -322,7 +347,17 @@ class TripUpdatesLoader():
         return key
 
     def run(self) -> None:
-        """"""
+        """Load one day of raw snapshots into the bronze layer on S3.
+
+        Lists the target date's raw objects, streams them concurrently through a
+        bounded sliding window, parses each snapshot into a typed Arrow
+        ``RecordBatch``, flushes accumulated batches to a local Parquet file in
+        ``row_group_size`` chunks, and uploads the finished Parquet file to S3.
+
+        Raises:
+            RuntimeError: If no raw object keys are discovered for the target
+                date.
+        """
 
         keys = self.get_raw_paths()
         if not keys:
@@ -332,18 +367,27 @@ class TripUpdatesLoader():
         
         with TemporaryDirectory() as tmpdir:
             data_path = f"{tmpdir}/data.parquet"
-            with pq.ParquetWriter(data_path, self.data_schema) as writer:
+            capture_log_path = f"{tmpdir}/capture_log.parquet"
+            archive_path = f"{tmpdir}/raw.tar.zst"
+
+            with (
+                pq.ParquetWriter(data_path, self.data_schema) as writer,
+                #TODO: instantiate capture log collector
+                tarfile.open(archive_path, "w:zst") as archive,
+            ):
 
                 pending_batches: list[pa.RecordBatch] = []
                 pending_rows = 0
                 total_rows = 0
-                #TODO: instantiate capture log collector
-                #TODO: instantiate tarball
                 for key, future in self.iter_raw_objects(keys=keys, max_in_flight=16):
 
                     try:
                         blob = future.result()
-                        #TODO: write the snapshot bytes to tarball
+
+                        tarinfo = tarfile.TarInfo(name=key)
+                        tarinfo.size = len(blob)
+                        archive.addfile(tarinfo=tarinfo, fileobj=io.BytesIO(blob))
+                        
                         header_ts, batch = self.parse_snapshot(blob)
                     except botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError:
                         #TODO: capture log and logger log
@@ -360,18 +404,13 @@ class TripUpdatesLoader():
                         total_rows += batch.num_rows
 
                     if pending_rows >= self.row_group_size:
-                        table = pa.Table.from_batches(pending_batches, schema=self.data_schema)
-                        writer.write_table(table)
-                        pending_batches.clear()
+                        self.flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
                         pending_rows = 0
 
                 if pending_batches:
-                    table = pa.Table.from_batches(pending_batches, schema=self.data_schema)
-                    writer.write_table(table)
-                    pending_batches.clear()
+                    self.flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
 
-            #TODO: write capture log to tmp directory
-            #TODO: upload captue log to s3
+            #TODO: upload capture log to s3
             if total_rows > 0:
                 self.s3_client.upload_file(
                     Filename=data_path,    
