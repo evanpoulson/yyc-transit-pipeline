@@ -28,6 +28,8 @@ class TripUpdatesLoader():
     raw_extension = "pb"
     # The pyarrow schema for this data table this loader produces.
     data_schema = SCHEMAS[source_name]
+    # The pyarrow schema for the capture log.
+    capture_log_schema = SCHEMAS["capture_log"]
     # The size of a row group for this loaders data file.
     row_group_size = 250_000
 
