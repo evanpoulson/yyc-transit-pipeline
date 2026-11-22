@@ -13,6 +13,8 @@ import pyarrow.parquet as pq
 from google.protobuf import message
 from google.transit import gtfs_realtime_pb2
 
+from schemas import SCHEMAS
+
 class TripUpdatesLoader():
 
     source_name = "trip_updates" # The name of the data source being loaded into bronze
@@ -20,6 +22,8 @@ class TripUpdatesLoader():
     source_path = "raw/trip_updates/" 
     # The file extension raw is stored as in S3
     raw_extension = "pb"
+    # The pyarrow schema for this data table this loader produces.
+    data_schema = SCHEMAS.get(source_name)
 
     def __init__(
         self, 
@@ -155,20 +159,27 @@ def run():
         # here we're likely going to want a loop, decoding keys and writing them to a buffer until 
         # the buffer has 250,000 - 500,000 rows and then writes it as a batch
         # we're going to want the buffer to be columnar (dict[str, list]) 
+        # so here will be a loop that writes each buffer
 
-            # so here we'd want to get a key and it's future for decoding,
+            # and here we'd want to get a key and it's future for decoding,
             # making sure that we're catching this in a try block for potential errors
             # from the futures
 
             # then we're going to want to actually decode that future according to this loaders
             # schema and write it's rows to the buffer (which also aligns with the schema)
 
-            # then we're going to want to convert the buffer to a recordbatch,
-            # write the batch, and then reset the buffer to free up memory
+            # we're also going to want to write rows to the capture log table (fine since it's small)
+            # at the same time as when we write each row to the buffer
 
-            # rinse repeat
+        # then we're going to want to convert the buffer to a recordbatch,
+        # write the batch, and then reset the buffer to free up memory
+
+        # rinse repeat
 
     # here we're going to want to store the full parquet file to s3
     # the file will maybe be a bit too big to upload with put object,
     # it might be better to write it to a temp directory then upload_file 
     # to s3 or it might be better to stream it with pyarrow
+
+    # at the same time we're also going to upload the capture log, 
+    # this one is small so it's fine any way
