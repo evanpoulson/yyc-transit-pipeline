@@ -325,14 +325,24 @@ class TripUpdatesLoader():
 
         keys = self.get_raw_paths()
 
-        # might want to chunk this into a:
-        # with tempfile.TemporaryDirectory()
+
+        # #TODO: get this into a tempfile.TemporaryDirectory context manager
         with pq.ParquetWriter(f"/tmp/{self.source_name}", self.data_schema):
 
             buf = self.new_buffer()
             for key, future in self.iter_raw_objects(keys=keys, max_in_flight=16):
-                pass
                 # try block to read a future for the snapshot bytes
+                try:
+                    blob = future.result()
+                except botocore.exceptions.ClientError:
+                    #TODO: capture log and logger log
+                    continue
+
+                try:
+                    data = self.parse_snapshot(blob)
+                except message.DecodeError:
+                    #TODO: capture log and logger log
+                    continue
 
                 # if we get em then decode the snapshot
                 # add the snapshot as a row to our buffer
