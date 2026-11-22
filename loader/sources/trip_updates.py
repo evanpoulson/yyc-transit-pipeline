@@ -131,6 +131,18 @@ class TripUpdatesLoader():
 
             yield key, future
 
+    def new_buffer(self) -> dict[str, list]:
+        """Create an empty columnar buffer matching ``data_schema``.
+
+        Returns:
+            Mapping of each column name in ``self.data_schema`` to a fresh
+            empty list, ready to collect decoded rows before flushing to a
+            ``pyarrow.RecordBatch``.
+        """
+
+        buf = {column: [] for column in self.data_schema.names}
+        return buf
+
     def build_bronze_key(self, table: str) -> str:
         """Builds the S3 key for a bronze object on the target date.
 
