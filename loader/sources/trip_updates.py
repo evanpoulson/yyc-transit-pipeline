@@ -259,6 +259,50 @@ class TripUpdatesLoader():
 
         return n
 
+    def parse_snapshot(
+        self, snapshot: bytes, buf: dict[str, list]
+    ) -> tuple[int | None, int]:
+        """Parse one raw GTFS-RT snapshot and append its decoded rows to ``buf``.
+
+        Validates the ``FeedMessage`` before mutating ``buf`` so a truncated or
+        corrupt payload raises without leaving partial rows behind. Reads the
+        ``FeedHeader`` timestamp once and copies it onto every row produced
+        from the snapshot.
+
+        Args:
+            snapshot: Raw protobuf bytes of one ``FeedMessage``.
+            buf: Columnar buffer (``dict[str, list]``) keyed by
+                ``self.data_schema.names`` to append rows into in place.
+
+        Returns:
+            A ``(header_timestamp, rows_added)`` tuple, where
+            ``header_timestamp`` is the snapshot's POSIX UTC timestamp (or
+            ``None`` if omitted) and ``rows_added`` is the total number of rows
+            appended to ``buf``.
+
+        Raises:
+            google.protobuf.message.DecodeError: If the bytes are not a valid,
+                fully-initialized ``FeedMessage``.
+        """
+
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.ParseFromString(snapshot)
+
+        if not feed.IsInitialized():
+            raise message.DecodeError(
+                f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
+            )
+
+        header_timestamp = (
+            feed.header.timestamp if feed.header.HasField("timestamp") else None
+        )
+
+        rows_added = 0
+        for entity in feed.entity:
+            rows_added += self._append_entity(entity, header_timestamp, buf)
+
+        return header_timestamp, rows_added
+
     def build_bronze_key(self, table: str) -> str:
         """Builds the S3 key for a bronze object on the target date.
 
