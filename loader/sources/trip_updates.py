@@ -23,7 +23,7 @@ class TripUpdatesLoader():
     # The file extension raw is stored as in S3
     raw_extension = "pb"
     # The pyarrow schema for this data table this loader produces.
-    data_schema = SCHEMAS.get(source_name)
+    data_schema = SCHEMAS[source_name]
 
     def __init__(
         self, 
@@ -148,18 +148,17 @@ class TripUpdatesLoader():
         key = f"bronze/{self.source_name}/{table}/{date_path}/{table}.parquet"
         return key
 
-def run():
-    """"""
+    def run():
+        """"""
 
-    # here we want to get all the keys for the raw objects
+        # here we want to get all the keys for the raw objects
 
-    # then here we want to open a parquet file with a context manager something like:
-    # with pq.ParquetWriter(...) as ...
+        # then here we want to open a parquet file with a context manager something like:
+        # with pq.ParquetWriter(...) as ...
 
-        # here we're likely going to want a loop, decoding keys and writing them to a buffer until 
-        # the buffer has 250,000 - 500,000 rows and then writes it as a batch
-        # we're going to want the buffer to be columnar (dict[str, list]) 
-        # so here will be a loop that writes each buffer
+            # here we're likely going to want a loop, decoding keys and writing them to a buffer until 
+            # the buffer has 250,000 - 500,000 rows and then writes it as a batch
+            # we're going to want the buffer to be columnar (dict[str, list]) 
 
             # and here we'd want to get a key and it's future for decoding,
             # making sure that we're catching this in a try block for potential errors
@@ -169,17 +168,17 @@ def run():
             # schema and write it's rows to the buffer (which also aligns with the schema)
 
             # we're also going to want to write rows to the capture log table (fine since it's small)
-            # at the same time as when we write each row to the buffer
+            # at the same time as when we write each row to the buffer for each s3 key
 
-        # then we're going to want to convert the buffer to a recordbatch,
-        # write the batch, and then reset the buffer to free up memory
+            # then we're going to want to convert the buffer to a recordbatch,
+            # write the batch, and then reset the buffer to free up memory
 
-        # rinse repeat
+            # rinse repeat
 
-    # here we're going to want to store the full parquet file to s3
-    # the file will maybe be a bit too big to upload with put object,
-    # it might be better to write it to a temp directory then upload_file 
-    # to s3 or it might be better to stream it with pyarrow
+        # here we're going to want to store the full parquet file to s3
+        # the file will maybe be a bit too big to upload with put object,
+        # it might be better to write it to a temp directory then upload_file 
+        # to s3 or it might be better to stream it with pyarrow
 
-    # at the same time we're also going to upload the capture log, 
-    # this one is small so it's fine any way
+        # at the same time we're also going to upload the capture log, 
+        # this one is small so it's fine any way
