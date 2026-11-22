@@ -149,7 +149,7 @@ class TripUpdatesLoader():
         entity: gtfs_realtime_pb2.FeedEntity,
         header_timestamp: int | None,
         buf: dict[str, list],
-    ) -> int:
+    ) -> None:
         """Flatten one ``TripUpdate`` entity and append its rows to ``buf``.
 
         Explodes each ``TripUpdate`` into one row per ``stop_time_update``, or
@@ -164,13 +164,10 @@ class TripUpdatesLoader():
                 timestamp (POSIX seconds, UTC), or ``None`` if omitted.
             buf: Columnar buffer (``dict[str, list]``) keyed by
                 ``self.data_schema.names`` to append rows into in place.
-
-        Returns:
-            Number of rows appended to ``buf`` for this entity.
         """
 
         if not entity.HasField("trip_update"):
-            return 0
+            return
 
         tu = entity.trip_update
         t = tu.trip if tu.HasField("trip") else None
@@ -213,7 +210,7 @@ class TripUpdatesLoader():
             buf["departure_time"].append(None)
             buf["departure_occupancy_status"].append(None)
             buf["stop_schedule_relationship"].append(None)
-            return 1
+            return
 
         n = len(stops)
         buf["header_timestamp"].extend([header_timestamp] * n)
@@ -258,32 +255,32 @@ class TripUpdatesLoader():
                 u.schedule_relationship if u.HasField("schedule_relationship") else None
             )
 
-        return n
+    def parse_snapshot(self, snapshot: bytes) -> tuple[int | None, pa.RecordBatch]:
+        """Parse one raw GTFS-RT snapshot into a typed Arrow ``RecordBatch``.
 
-    def parse_snapshot(
-        self, snapshot: bytes, buf: dict[str, list]
-    ) -> tuple[int | None, int]:
-        """Parse one raw GTFS-RT snapshot and append its decoded rows to ``buf``.
-
-        Validates the ``FeedMessage`` before mutating ``buf`` so a truncated or
-        corrupt payload raises without leaving partial rows behind. Reads the
-        ``FeedHeader`` timestamp once and copies it onto every row produced
-        from the snapshot.
+        Validates the ``FeedMessage``, reads the ``FeedHeader`` timestamp once
+        and copies it onto every row, and converts the decoded columns into a
+        ``pyarrow.RecordBatch`` typed by ``self.data_schema``. Because each
+        snapshot is parsed and schema-checked in isolation, a corrupt or
+        incompatible payload fails without affecting any previously accumulated
+        batches.
 
         Args:
             snapshot: Raw protobuf bytes of one ``FeedMessage``.
-            buf: Columnar buffer (``dict[str, list]``) keyed by
-                ``self.data_schema.names`` to append rows into in place.
 
         Returns:
-            A ``(header_timestamp, rows_added)`` tuple, where
-            ``header_timestamp`` is the snapshot's POSIX UTC timestamp (or
-            ``None`` if omitted) and ``rows_added`` is the total number of rows
-            appended to ``buf``.
+            A ``(header_timestamp, batch)`` tuple, where ``header_timestamp``
+            is the snapshot's POSIX UTC timestamp (or ``None`` if omitted) and
+            ``batch`` is a ``pyarrow.RecordBatch`` conforming to
+            ``self.data_schema`` (possibly with ``0`` rows on an empty feed).
 
         Raises:
             google.protobuf.message.DecodeError: If the bytes are not a valid,
                 fully-initialized ``FeedMessage``.
+            pyarrow.ArrowInvalid: If decoded column lengths or values violate
+                ``self.data_schema``.
+            pyarrow.ArrowTypeError: If a decoded value cannot be cast to its
+                declared column type in ``self.data_schema``.
         """
 
         feed = gtfs_realtime_pb2.FeedMessage()
@@ -298,11 +295,12 @@ class TripUpdatesLoader():
             feed.header.timestamp if feed.header.HasField("timestamp") else None
         )
 
-        rows_added = 0
+        buf = self.new_buffer()
         for entity in feed.entity:
-            rows_added += self._append_entity(entity, header_timestamp, buf)
+            self._append_entity(entity, header_timestamp, buf)
 
-        return header_timestamp, rows_added
+        batch = pa.RecordBatch.from_pydict(buf, schema=self.data_schema)
+        return header_timestamp, batch
 
     def build_bronze_key(self, table: str) -> str:
         """Builds the S3 key for a bronze object on the target date.
@@ -340,7 +338,7 @@ class TripUpdatesLoader():
                         continue
 
                     try:
-                        data = self.parse_snapshot(blob)
+                        row_count, batch = self.parse_snapshot(blob)
                     except message.DecodeError:
                         #TODO: capture log and logger log
                         continue
