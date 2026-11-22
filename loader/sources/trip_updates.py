@@ -5,6 +5,7 @@ from collections import deque
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
+from tempfile import TemporaryDirectory
 
 import botocore.client
 import botocore.exceptions
@@ -326,37 +327,37 @@ class TripUpdatesLoader():
         keys = self.get_raw_paths()
 
 
-        # #TODO: get this into a tempfile.TemporaryDirectory context manager
-        with pq.ParquetWriter(f"/tmp/{self.source_name}", self.data_schema):
+        with TemporaryDirectory() as tmpdir:
+            with pq.ParquetWriter(f"{tmpdir}/{self.source_name}", self.data_schema):
 
-            buf = self.new_buffer()
-            for key, future in self.iter_raw_objects(keys=keys, max_in_flight=16):
-                # try block to read a future for the snapshot bytes
-                try:
-                    blob = future.result()
-                except botocore.exceptions.ClientError:
-                    #TODO: capture log and logger log
-                    continue
+                buf = self.new_buffer()
+                for key, future in self.iter_raw_objects(keys=keys, max_in_flight=16):
 
-                try:
-                    data = self.parse_snapshot(blob)
-                except message.DecodeError:
-                    #TODO: capture log and logger log
-                    continue
+                    try:
+                        blob = future.result()
+                    except botocore.exceptions.ClientError:
+                        #TODO: capture log and logger log
+                        continue
 
-                # if we get em then decode the snapshot
-                # add the snapshot as a row to our buffer
-                # also add a row to the capture log for the snapshot
+                    try:
+                        data = self.parse_snapshot(blob)
+                    except message.DecodeError:
+                        #TODO: capture log and logger log
+                        continue
 
-                # check if the buffer length is >= 250,000
-                    # if so flush it with pa.RecordBatch
-                    # then clear it to free the memory
+                    # if we get em then decode the snapshot
+                    # add the snapshot as a row to our buffer
+                    # also add a row to the capture log for the snapshot
 
-                # rinse repeat
+                    # check if the buffer length is >= 250,000
+                        # if so flush it with pa.RecordBatch
+                        # then clear it to free the memory
 
-            # if the buffer still has rows (len > 0)
-            # then flush one more time 
+                    # rinse repeat
 
-        # here we want to store the file in s3 with s3.upload_file
-        # at the same time we're also going to want to upload the capture log
-        # here we're going to want to store the full parquet file to s3
+                # if the buffer still has rows (len > 0)
+                # then flush one more time 
+
+            # here we want to store the file in s3 with s3.upload_file
+            # at the same time we're also going to want to upload the capture log
+            # here we're going to want to store the full parquet file to s3
