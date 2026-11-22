@@ -365,6 +365,32 @@ class TripUpdatesLoader():
             return f"archive/{self.source_name}/{date_path}/raw.tar.zst"
         raise ValueError(f"Unsupported layer: {layer!r}")
 
+    def _upload_file(
+        self,
+        local_path: str,
+        key: str,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        """Stream a local file to S3 under ``key`` using multipart upload.
+
+        Args:
+            local_path: Path to the local file to upload.
+            key: Destination S3 object key (no bucket name or leading slash).
+            content_type: MIME type stored on the S3 object.
+
+        Raises:
+            boto3.exceptions.S3UploadFailedError: If S3 rejects or drops the
+                upload.
+            FileNotFoundError: If ``local_path`` does not exist.
+        """
+
+        self.s3_client.upload_file(
+            Filename=local_path,
+            Bucket=self.bucket,
+            Key=key,
+            ExtraArgs={"ContentType": content_type},
+        )
+
     def run(self) -> None:
         """Load one day of raw snapshots into the bronze layer on S3.
 
@@ -431,18 +457,15 @@ class TripUpdatesLoader():
 
             #TODO: upload capture log to s3
             if total_rows > 0:
-                self.s3_client.upload_file(
-                    Filename=data_path,    
-                    Bucket=self.bucket,
-                    Key=self._build_key(layer="bronze", table="data"),
-                    ExtraArgs={"ContentType": "application/octet-stream"}, 
+                self._upload_file(
+                    local_path=data_path,
+                    key=self._build_key(layer="bronze", table="data"),
                 )
 
-            self.s3_client.upload_file(
-                Filename=archive_path,    
-                Bucket=self.bucket,
-                Key=self._build_key(layer="archive"),
-                ExtraArgs={"ContentType": "application/zstd"}, 
+            self._upload_file(
+                local_path=archive_path,
+                key=self._build_key(layer="archive"),
+                content_type="application/zstd",
             )
 
         #TODO: log for completeness
