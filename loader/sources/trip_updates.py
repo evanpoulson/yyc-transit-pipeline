@@ -52,7 +52,7 @@ class TripUpdatesLoader():
         self.thread_pool = thread_pool
         self.target_date = target_date
 
-    def get_raw_paths(self) -> list[str]:
+    def _get_raw_paths(self) -> list[str]:
         """List every raw object key for this feed on the target date.
 
         Lists objects under ``<source_path><YYYY>/<MM>/<DD>/`` and filters to
@@ -80,7 +80,7 @@ class TripUpdatesLoader():
 
         return paths
 
-    def get_raw_object(self, key: str) -> bytes:
+    def _get_raw_object(self, key: str) -> bytes:
         """Download one raw object and return its bytes.
 
         Args:
@@ -102,7 +102,7 @@ class TripUpdatesLoader():
         )
         return response["Body"].read()
 
-    def iter_raw_objects(
+    def _iter_raw_objects(
         self, keys: list[str], max_in_flight: int = 16
     ) -> Iterator[tuple[str, Future[bytes]]]:
         """Download raw objects concurrently using a bounded sliding window.
@@ -127,17 +127,17 @@ class TripUpdatesLoader():
 
         # Pre-load the deque 
         for key in itertools.islice(key_iter, max_in_flight):
-            pending.append((key, self.thread_pool.submit(self.get_raw_object, key)))
+            pending.append((key, self.thread_pool.submit(self._get_raw_object, key)))
 
         while pending:
             key, future = pending.popleft()
             next_key = next(key_iter, None)
             if next_key is not None:
-                pending.append((next_key, self.thread_pool.submit(self.get_raw_object, next_key)))
+                pending.append((next_key, self.thread_pool.submit(self._get_raw_object, next_key)))
 
             yield key, future
 
-    def new_buffer(self) -> dict[str, list]:
+    def _new_buffer(self) -> dict[str, list]:
         """Create an empty columnar buffer matching ``data_schema``.
 
         Returns:
@@ -260,7 +260,7 @@ class TripUpdatesLoader():
                 u.schedule_relationship if u.HasField("schedule_relationship") else None
             )
 
-    def parse_snapshot(self, snapshot: bytes) -> tuple[int | None, pa.RecordBatch]:
+    def _parse_snapshot(self, snapshot: bytes) -> tuple[int | None, pa.RecordBatch]:
         """Parse one raw GTFS-RT snapshot into a typed Arrow ``RecordBatch``.
 
         Validates the ``FeedMessage``, reads the ``FeedHeader`` timestamp once
@@ -300,14 +300,14 @@ class TripUpdatesLoader():
             feed.header.timestamp if feed.header.HasField("timestamp") else None
         )
 
-        buf = self.new_buffer()
+        buf = self._new_buffer()
         for entity in feed.entity:
             self._append_entity(entity, header_timestamp, buf)
 
         batch = pa.RecordBatch.from_pydict(buf, schema=self.data_schema)
         return header_timestamp, batch
 
-    def flush_batch(
+    def _flush_batch(
         self,
         writer: pq.ParquetWriter,
         batches: list[pa.RecordBatch],
@@ -330,7 +330,7 @@ class TripUpdatesLoader():
         writer.write_table(table)
         batches.clear()
 
-    def build_key(
+    def _build_key(
         self,
         layer: Literal["bronze", "archive"],
         table: str | None = None,
@@ -378,7 +378,7 @@ class TripUpdatesLoader():
                 date.
         """
 
-        keys = self.get_raw_paths()
+        keys = self._get_raw_paths()
         if not keys:
             raise RuntimeError(
                 f"No raw keys discovered for {self.source_name} on {self.target_date}."
@@ -398,7 +398,7 @@ class TripUpdatesLoader():
                 pending_batches: list[pa.RecordBatch] = []
                 pending_rows = 0
                 total_rows = 0
-                for key, future in self.iter_raw_objects(keys=keys, max_in_flight=16):
+                for key, future in self._iter_raw_objects(keys=keys, max_in_flight=16):
 
                     try:
                         blob = future.result()
@@ -407,7 +407,7 @@ class TripUpdatesLoader():
                         tarinfo.size = len(blob)
                         archive.addfile(tarinfo=tarinfo, fileobj=io.BytesIO(blob))
                         
-                        header_ts, batch = self.parse_snapshot(blob)
+                        header_ts, batch = self._parse_snapshot(blob)
                     except botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError:
                         #TODO: capture log and logger log
                         continue
@@ -423,25 +423,25 @@ class TripUpdatesLoader():
                         total_rows += batch.num_rows
 
                     if pending_rows >= self.row_group_size:
-                        self.flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
+                        self._flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
                         pending_rows = 0
 
                 if pending_batches:
-                    self.flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
+                    self._flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
 
             #TODO: upload capture log to s3
             if total_rows > 0:
                 self.s3_client.upload_file(
                     Filename=data_path,    
                     Bucket=self.bucket,
-                    Key=self.build_key(layer="bronze", table="data"),
+                    Key=self._build_key(layer="bronze", table="data"),
                     ExtraArgs={"ContentType": "application/octet-stream"}, 
                 )
 
             self.s3_client.upload_file(
                 Filename=archive_path,    
                 Bucket=self.bucket,
-                Key=self.build_key(layer="archive"),
+                Key=self._build_key(layer="archive"),
                 ExtraArgs={"ContentType": "application/zstd"}, 
             )
 
