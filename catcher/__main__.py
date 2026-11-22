@@ -10,7 +10,7 @@ import time
 
 import boto3
 
-from catcher.sub_catchers import (
+from catcher.sources import (
     service_alerts,
     transit_schedule,
     trip_updates,
