@@ -25,6 +25,8 @@ class TripUpdatesLoader():
     raw_extension = "pb"
     # The pyarrow schema for this data table this loader produces.
     data_schema = SCHEMAS[source_name]
+    # The size of a row group for this loaders data file.
+    row_group_size = 250_000
 
     def __init__(
         self, 
@@ -319,43 +321,61 @@ class TripUpdatesLoader():
         key = f"bronze/{self.source_name}/{table}/{date_path}/{table}.parquet"
         return key
 
-    def run(self):
+    def run(self) -> None:
         """"""
 
         keys = self.get_raw_paths()
-
-
+        if not keys:
+            raise RuntimeError(
+                f"{self.source_name} had no raw keys discovered for {self.target_date}."
+            )
+        
         with TemporaryDirectory() as tmpdir:
-            with pq.ParquetWriter(f"{tmpdir}/{self.source_name}", self.data_schema):
+            data_path = f"{tmpdir}/data.parquet"
+            with pq.ParquetWriter(data_path, self.data_schema) as writer:
 
-                buf = self.new_buffer()
+                pending_batches: list[pa.RecordBatch] = []
+                pending_rows = 0
+                total_rows = 0
+                #TODO: instantiate capture log collector
                 for key, future in self.iter_raw_objects(keys=keys, max_in_flight=16):
 
                     try:
                         blob = future.result()
-                    except botocore.exceptions.ClientError:
+                    except botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError:
                         #TODO: capture log and logger log
                         continue
 
                     try:
-                        row_count, batch = self.parse_snapshot(blob)
+                        header_ts, batch = self.parse_snapshot(blob)
                     except message.DecodeError:
                         #TODO: capture log and logger log
                         continue
 
-                    # if we get em then decode the snapshot
-                    # add the snapshot as a row to our buffer
-                    # also add a row to the capture log for the snapshot
+                    #TODO: also add a row to the capture log for the snapshot
 
-                    # check if the buffer length is >= 250,000
-                        # if so flush it with pa.RecordBatch
-                        # then clear it to free the memory
+                    if batch.num_rows > 0:
+                        pending_batches.append(batch)
+                        pending_rows += batch.num_rows
+                        total_rows += batch.num_rows
 
-                    # rinse repeat
+                    if pending_rows >= self.row_group_size:
+                        table = pa.Table.from_batches(pending_batches, schema=self.data_schema)
+                        writer.write_table(table)
+                        pending_batches.clear()
+                        pending_rows = 0
 
-                # if the buffer still has rows (len > 0)
-                # then flush one more time 
+                if pending_batches:
+                    table = pa.Table.from_batches(pending_batches, schema=self.data_schema)
+                    writer.write_table(table)
+                    pending_batches.clear()
 
-            # here we want to store the file in s3 with s3.upload_file
-            # at the same time we're also going to want to upload the capture log
-            # here we're going to want to store the full parquet file to s3
+            #TODO: write capture log to tmp directory
+            #TODO: upload captue log to s3
+            if total_rows > 0:
+                self.s3_client.upload_file(
+                    Filename=data_path,    
+                    Bucket=self.bucket,
+                    Key=self.build_bronze_key("data"),
+                    ExtraArgs={"ContentType": "application/octet-stream"}, 
+                )
