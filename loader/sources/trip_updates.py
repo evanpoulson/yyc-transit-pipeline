@@ -327,7 +327,7 @@ class TripUpdatesLoader():
         keys = self.get_raw_paths()
         if not keys:
             raise RuntimeError(
-                f"{self.source_name} had no raw keys discovered for {self.target_date}."
+                f"No raw keys discovered for {self.source_name} on {self.target_date}."
             )
         
         with TemporaryDirectory() as tmpdir:
@@ -338,21 +338,21 @@ class TripUpdatesLoader():
                 pending_rows = 0
                 total_rows = 0
                 #TODO: instantiate capture log collector
+                #TODO: instantiate tarball
                 for key, future in self.iter_raw_objects(keys=keys, max_in_flight=16):
 
                     try:
                         blob = future.result()
+                        #TODO: write the snapshot bytes to tarball
+                        header_ts, batch = self.parse_snapshot(blob)
                     except botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError:
                         #TODO: capture log and logger log
                         continue
-
-                    try:
-                        header_ts, batch = self.parse_snapshot(blob)
                     except message.DecodeError:
                         #TODO: capture log and logger log
                         continue
 
-                    #TODO: also add a row to the capture log for the snapshot
+                    #TODO: add a row to the capture log for the snapshot
 
                     if batch.num_rows > 0:
                         pending_batches.append(batch)
@@ -379,3 +379,5 @@ class TripUpdatesLoader():
                     Key=self.build_bronze_key("data"),
                     ExtraArgs={"ContentType": "application/octet-stream"}, 
                 )
+
+        #TODO: log for completeness
