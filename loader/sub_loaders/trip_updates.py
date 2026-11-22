@@ -144,30 +144,6 @@ class TripUpdatesLoader():
         key = f"bronze/{self.source_name}/{table}/{date_path}/{table}.parquet"
         return key
 
-    def store_bronze_object(self, key: str, data: bytes) -> dict:
-        """Uploads a bronze object to S3 under the provided key.
-
-        Args:
-            key: Key to store the object in S3 as.
-            data: Bytes to store.
-
-        Returns:
-            Response from the S3 put call.
-
-        Raises:
-            botocore.exceptions.ClientError: If S3 rejects the upload (for example,
-                access denied or a missing bucket).
-            botocore.exceptions.BotoCoreError: If the upload never reaches S3
-                (for example, no credentials or a connection failure).
-        """
-
-        return self.s3_client.put_object(
-            Body=data,
-            Bucket=self.bucket,
-            Key=key,
-            ContentType="application/octet-stream",
-        )
-
 def run():
     """"""
 
@@ -185,7 +161,7 @@ def run():
             # from the futures
 
             # then we're going to want to actually decode that future according to this loaders
-            # schema and write it's rows to the buffer
+            # schema and write it's rows to the buffer (which also aligns with the schema)
 
             # then we're going to want to convert the buffer to a recordbatch,
             # write the batch, and then reset the buffer to free up memory
