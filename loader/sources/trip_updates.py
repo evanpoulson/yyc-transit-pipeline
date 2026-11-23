@@ -140,12 +140,14 @@ class TripUpdatesLoader():
             yield key, future
 
     def _new_buffer(self, schema: pa.Schema) -> dict[str, list]:
-        """Create an empty columnar buffer matching ``data_schema``.
+        """Create an empty columnar buffer matching ``schema``.
+
+        Args:
+            schema: Explicit PyArrow schema whose column names become the
+                buffer keys.
 
         Returns:
-            Mapping of each column name in ``self.data_schema`` to a fresh
-            empty list, ready to collect decoded rows before flushing to a
-            ``pyarrow.RecordBatch``.
+            Mapping of each column name in ``schema`` to a fresh empty list.
         """
 
         buf = {column: [] for column in schema.names}
@@ -332,6 +334,49 @@ class TripUpdatesLoader():
         writer.write_table(table)
         batches.clear()
 
+    def _append_capture_log(
+        self,
+        capture_log: dict[str, list],
+        key: str,
+        status: Literal["ok", "download_failed", "parse_failed"],
+        header_timestamp: int | None = None,
+        byte_size: int | None = None,
+        row_count: int | None = None,
+    ) -> None:
+        """Append one snapshot-level outcome row to the ``capture_log`` buffer.
+
+        Extracts ``capture_timestamp`` from the raw object key's
+        ``<source>_<epoch>.<ext>`` filename suffix (storing ``None`` if the key
+        does not match that format) and appends all six ``capture_log`` columns
+        in place.
+
+        Args:
+            capture_log: Columnar buffer keyed by ``self.capture_log_schema.names``.
+            key: Raw S3 object key for the snapshot.
+            status: Outcome for this snapshot (``"ok"``, ``"download_failed"``,
+                or ``"parse_failed"``).
+            header_timestamp: Snapshot ``FeedHeader`` timestamp (POSIX seconds,
+                UTC), or ``None`` if unavailable or omitted.
+            byte_size: Raw payload size in bytes, or ``None`` if the download
+                failed.
+            row_count: Number of decoded rows produced by the snapshot, or
+                ``None`` if downloading or parsing failed.
+        """
+
+        filename = key.rsplit("/", 1)[-1]
+        stem = filename.rsplit(".", 1)[0]
+        try:
+            capture_timestamp: int | None = int(stem.rsplit("_", 1)[1])
+        except (IndexError, ValueError):
+            capture_timestamp = None
+
+        capture_log["object_key"].append(key)
+        capture_log["capture_timestamp"].append(capture_timestamp)
+        capture_log["header_timestamp"].append(header_timestamp)
+        capture_log["status"].append(status)
+        capture_log["byte_size"].append(byte_size)
+        capture_log["row_count"].append(row_count)
+
     def _build_key(
         self,
         layer: Literal["bronze", "archive"],
@@ -426,6 +471,7 @@ class TripUpdatesLoader():
                 capture_log = self._new_buffer(schema=self.capture_log_schema)
                 pending_rows = 0
                 total_rows = 0
+                archived_count = 0
                 for key, future in self._iter_raw_objects(keys=keys, max_in_flight=16):
 
                     try:
@@ -434,16 +480,35 @@ class TripUpdatesLoader():
                         tarinfo = tarfile.TarInfo(name=key)
                         tarinfo.size = len(blob)
                         archive.addfile(tarinfo=tarinfo, fileobj=io.BytesIO(blob))
+                        archived_count += 1
                         
                         header_ts, batch = self._parse_snapshot(blob)
                     except botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError:
-                        #TODO: capture log and logger log
+                        self._append_capture_log(
+                            capture_log=capture_log,
+                            key=key,
+                            status="download_failed",
+                        )
+                        #TODO: logger log
                         continue
                     except message.DecodeError:
-                        #TODO: capture log and logger log
+                        self._append_capture_log(
+                            capture_log=capture_log,
+                            key=key,
+                            status="parse_failed",
+                            byte_size=len(blob),
+                        )
+                        #TODO: logger log
                         continue
 
-                    #TODO: add a row to the capture log for the snapshot
+                    self._append_capture_log(
+                        capture_log=capture_log,
+                        key=key,
+                        status="ok",
+                        header_timestamp=header_ts,
+                        byte_size=len(blob),
+                        row_count=batch.num_rows,
+                    )
 
                     if batch.num_rows > 0:
                         pending_batches.append(batch)
