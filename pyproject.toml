@@ -2,7 +2,7 @@
 name = "yyc-transit-pipeline"
 version = "0.1.0"
 description = "Calgary Transit GTFS-RT pipeline"
-requires-python = ">=3.11"
+requires-python = ">=3.15"
 dependencies = []
 
 [dependency-groups]
