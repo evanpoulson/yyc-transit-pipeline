@@ -5,12 +5,12 @@ import pyarrow as pa
 
 SCHEMAS = {
     "capture_log": pa.schema([
-        {"object_key", pa.string()},
-        {"capture_timestamp", pa.int64()},
-        {"header_timestamp", pa.int64()},
-        {"status", pa.string()},
-        {"byte_size", pa.int64()},
-        {"row_count", pa.int64()},
+        ("object_key", pa.string()),
+        ("capture_timestamp", pa.int64()),
+        ("header_timestamp", pa.int64()),
+        ("status", pa.string()),
+        ("byte_size", pa.int64()),
+        ("row_count", pa.int64()),
     ]),
     "trip_updates": pa.schema([
         ("header_timestamp", pa.int64()),
