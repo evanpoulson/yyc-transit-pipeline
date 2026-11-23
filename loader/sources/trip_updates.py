@@ -21,31 +21,47 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from google.protobuf import message
 from google.transit import gtfs_realtime_pb2
-
 from schemas import SCHEMAS
 
 logger = logging.getLogger(__name__)
 
-class TripUpdatesLoader():
 
-    source_name = "trip_updates" # The name of the data source being loaded into bronze
-    # The path of where the raw is being stored in S3
-    source_path = "raw/trip_updates/" 
-    # The file extension raw is stored as in S3
+class TripUpdatesLoader:
+    """Loads one day of raw ``trip_updates`` GTFS-RT snapshots into bronze and archive.
+
+    Streams raw protobuf snapshots from S3 through a bounded sliding window,
+    archives the unmodified bytes into a daily ``.tar.zst`` tarball, explodes
+    each ``TripUpdate`` entity into one flat row per ``stop_time_update`` (or
+    one null-stop row if a trip has none), flushes typed Arrow batches to
+    Parquet in ``row_group_size`` chunks, and records per-snapshot outcomes in
+    ``capture_log``. Optional protobuf fields are read through ``HasField`` so
+    absent values stay ``None`` rather than protobuf defaults.
+
+    Attributes:
+        source_name: Feed identifier used in S3 key prefixes and log messages.
+        source_path: S3 prefix where raw snapshots for this feed are stored.
+        raw_extension: File extension of raw snapshot objects (without dot).
+        data_schema: Explicit PyArrow schema for the bronze ``data`` table.
+        capture_log_schema: Explicit PyArrow schema for ``capture_log``.
+        row_group_size: Target row count per flushed Parquet row group; keeps
+            buffered Arrow memory bounded regardless of daily volume.
+        max_in_flight: Maximum concurrent S3 downloads in the sliding window.
+    """
+
+    source_name = "trip_updates"
+    source_path = f"raw/{source_name}/"
     raw_extension = "pb"
-    # The pyarrow schema for this data table this loader produces.
     data_schema = SCHEMAS[source_name]
-    # The pyarrow schema for the capture log.
     capture_log_schema = SCHEMAS["capture_log"]
-    # The size of a row group for this loaders data file.
     row_group_size = 250_000
+    max_in_flight = 16
 
     def __init__(
-        self, 
-        s3_client: botocore.client.BaseClient, 
-        bucket: str, 
-        thread_pool: ThreadPoolExecutor, 
-        target_date: date
+        self,
+        s3_client: botocore.client.BaseClient,
+        bucket: str,
+        thread_pool: ThreadPoolExecutor,
+        target_date: date,
     ):
         """Store the variables specific to this loader.
 
@@ -55,7 +71,7 @@ class TripUpdatesLoader():
             thread_pool: Thread pool executor for concurrent operations.
             target_date: Date to run the bronze load on.
         """
-        
+
         self.s3_client = s3_client
         self.bucket = bucket
         self.thread_pool = thread_pool
@@ -99,9 +115,9 @@ class TripUpdatesLoader():
             The object's raw bytes.
 
         Raises:
-            botocore.exceptions.ClientError: Server side. If S3 rejects the download 
+            botocore.exceptions.ClientError: Server side. If S3 rejects the download
                 (for example, access denied or a missing bucket).
-            botocore.exceptions.BotoCoreError: Client Side. If the download never reaches 
+            botocore.exceptions.BotoCoreError: Client side. If the download never reaches
                 S3 (for example, no credentials or a connection failure).
         """
 
@@ -112,7 +128,7 @@ class TripUpdatesLoader():
         return response["Body"].read()
 
     def _iter_raw_objects(
-        self, keys: list[str], max_in_flight: int = 16
+        self, keys: list[str], max_in_flight: int | None = None
     ) -> Iterator[tuple[str, Future[bytes]]]:
         """Download raw objects concurrently using a bounded sliding window.
 
@@ -123,30 +139,40 @@ class TripUpdatesLoader():
         Args:
             keys: Raw S3 object keys to download, in the order to yield them.
             max_in_flight: Maximum number of concurrent downloads to keep
-                queued in the sliding window.
+                queued in the sliding window. Defaults to ``self.max_in_flight``.
 
         Yields:
             Tuples of ``(key, future)`` in the same order as ``keys``, where
             ``future`` resolves to the object's raw bytes (or raises a
             download exception when ``future.result()`` is called).
+
+        Raises:
+            ValueError: If ``max_in_flight`` is less than ``1``.
         """
 
-        key_iter = iter(keys)
-        pending = deque()
+        limit = self.max_in_flight if max_in_flight is None else max_in_flight
+        if limit < 1:
+            raise ValueError(f"max_in_flight must be >= 1, got {limit}")
 
-        # Pre-load the deque 
-        for key in itertools.islice(key_iter, max_in_flight):
+        key_iter = iter(keys)
+        pending: deque[tuple[str, Future[bytes]]] = deque()
+
+        for key in itertools.islice(key_iter, limit):
             pending.append((key, self.thread_pool.submit(self._get_raw_object, key)))
 
         while pending:
             key, future = pending.popleft()
             next_key = next(key_iter, None)
             if next_key is not None:
-                pending.append((next_key, self.thread_pool.submit(self._get_raw_object, next_key)))
+                # Submit the replacement before yielding so S3 I/O overlaps with parsing.
+                pending.append(
+                    (next_key, self.thread_pool.submit(self._get_raw_object, next_key))
+                )
 
             yield key, future
 
-    def _new_buffer(self, schema: pa.Schema) -> dict[str, list]:
+    @staticmethod
+    def _new_buffer(schema: pa.Schema) -> dict[str, list]:
         """Create an empty columnar buffer matching ``schema``.
 
         Args:
@@ -189,6 +215,7 @@ class TripUpdatesLoader():
         t = tu.trip if tu.HasField("trip") else None
         d = tu.vehicle if tu.HasField("vehicle") else None
 
+        # entity.id is required in proto2 (HasField is always True); normalize "" to None.
         entity_id = entity.id or None
         trip_id = t.trip_id if t and t.HasField("trip_id") else None
         route_id = t.route_id if t and t.HasField("route_id") else None
@@ -196,7 +223,9 @@ class TripUpdatesLoader():
         start_time = t.start_time if t and t.HasField("start_time") else None
         start_date = t.start_date if t and t.HasField("start_date") else None
         schedule_relationship = (
-            t.schedule_relationship if t and t.HasField("schedule_relationship") else None
+            t.schedule_relationship
+            if t and t.HasField("schedule_relationship")
+            else None
         )
         vehicle_id = d.id if d and d.HasField("id") else None
         vehicle_label = d.label if d and d.HasField("label") else None
@@ -205,6 +234,7 @@ class TripUpdatesLoader():
 
         stops = tu.stop_time_update
         if not stops:
+            # Preserve trips with no stop updates as a single null-stop row.
             buf["header_timestamp"].append(header_timestamp)
             buf["entity_id"].append(entity_id)
             buf["trip_id"].append(trip_id)
@@ -228,6 +258,7 @@ class TripUpdatesLoader():
             buf["stop_schedule_relationship"].append(None)
             return
 
+        # Bulk-extend repeated trip fields in C rather than appending per stop.
         n = len(stops)
         buf["header_timestamp"].extend([header_timestamp] * n)
         buf["entity_id"].extend([entity_id] * n)
@@ -302,6 +333,7 @@ class TripUpdatesLoader():
         feed = gtfs_realtime_pb2.FeedMessage()
         feed.ParseFromString(snapshot)
 
+        # Proto2 ParseFromString accepts wire-boundary truncations; verify required fields.
         if not feed.IsInitialized():
             raise message.DecodeError(
                 f"incomplete FeedMessage, missing {feed.FindInitializationErrors()}"
@@ -318,8 +350,8 @@ class TripUpdatesLoader():
         batch = pa.RecordBatch.from_pydict(buf, schema=self.data_schema)
         return header_timestamp, batch
 
+    @staticmethod
     def _flush_batch(
-        self,
         writer: pq.ParquetWriter,
         batches: list[pa.RecordBatch],
         schema: pa.Schema,
@@ -341,8 +373,8 @@ class TripUpdatesLoader():
         writer.write_table(table)
         batches.clear()
 
+    @staticmethod
     def _append_capture_log(
-        self,
         capture_log: dict[str, list],
         key: str,
         status: Literal["ok", "download_failed", "parse_failed"],
@@ -374,7 +406,7 @@ class TripUpdatesLoader():
         stem = filename.rsplit(".", 1)[0]
         try:
             capture_timestamp: int | None = int(stem.rsplit("_", 1)[1])
-        except (IndexError, ValueError):
+        except IndexError, ValueError:
             capture_timestamp = None
 
         capture_log["object_key"].append(key)
@@ -460,8 +492,15 @@ class TripUpdatesLoader():
         bounded sliding window, archives raw bytes into a daily ``.tar.zst``
         tarball, parses each snapshot into a typed Arrow ``RecordBatch``,
         flushes accumulated batches to Parquet in ``row_group_size`` chunks,
-        records per-snapshot outcomes in ``capture_log``, and uploads all
-        produced files to S3.
+        records per-snapshot outcomes in ``capture_log``, and uploads produced
+        files to S3.
+
+        Upload rules when partial or total failures occur:
+            - ``capture_log.parquet`` is always uploaded when keys are found so
+              failed days still leave a queryable audit trail.
+            - ``data.parquet`` is skipped if ``0`` rows were decoded (avoiding
+              overwriting a good partition with an empty file).
+            - ``raw.tar.zst`` is skipped if ``0`` objects downloaded.
 
         Raises:
             RuntimeError: If no raw object keys are discovered for the target
@@ -486,34 +525,31 @@ class TripUpdatesLoader():
             len(keys),
             self.target_date,
         )
-        
+
         with TemporaryDirectory() as tmpdir:
             data_path = f"{tmpdir}/data.parquet"
             capture_log_path = f"{tmpdir}/capture_log.parquet"
             archive_path = f"{tmpdir}/raw.tar.zst"
 
             with (
-                pq.ParquetWriter(data_path, self.data_schema, compression="zstd") as writer,
+                pq.ParquetWriter(
+                    data_path, self.data_schema, compression="zstd"
+                ) as writer,
                 tarfile.open(archive_path, "w:zst") as archive,
             ):
-
                 pending_batches: list[pa.RecordBatch] = []
                 capture_log = self._new_buffer(schema=self.capture_log_schema)
                 pending_rows = 0
                 total_rows = 0
                 archived_count = 0
-                for key, future in self._iter_raw_objects(keys=keys, max_in_flight=16):
 
+                for key, future in self._iter_raw_objects(keys=keys):
                     try:
                         blob = future.result()
-
-                        tarinfo = tarfile.TarInfo(name=key)
-                        tarinfo.size = len(blob)
-                        archive.addfile(tarinfo=tarinfo, fileobj=io.BytesIO(blob))
-                        archived_count += 1
-                        
-                        header_ts, batch = self._parse_snapshot(blob)
-                    except botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError:
+                    except (
+                        botocore.exceptions.ClientError,
+                        botocore.exceptions.BotoCoreError,
+                    ):
                         logger.warning(
                             "%s: download failed for %s",
                             self.source_name,
@@ -526,7 +562,17 @@ class TripUpdatesLoader():
                             status="download_failed",
                         )
                         continue
+
+                    # Archive raw bytes before parsing so corrupt payloads stay recoverable.
+                    tarinfo = tarfile.TarInfo(name=key)
+                    tarinfo.size = len(blob)
+                    archive.addfile(tarinfo=tarinfo, fileobj=io.BytesIO(blob))
+                    archived_count += 1
+
+                    try:
+                        header_ts, batch = self._parse_snapshot(blob)
                     except message.DecodeError:
+                        # Only catch upstream protobuf corruption; let Arrow schema errors fail loudly.
                         logger.debug(
                             "%s: parse failed for %s",
                             self.source_name,
@@ -550,18 +596,29 @@ class TripUpdatesLoader():
                         row_count=batch.num_rows,
                     )
 
+                    # Skip 0-row batches so pending_batches stays non-empty and quiet feeds don't bloat it.
                     if batch.num_rows > 0:
                         pending_batches.append(batch)
                         pending_rows += batch.num_rows
                         total_rows += batch.num_rows
 
                     if pending_rows >= self.row_group_size:
-                        self._flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
+                        self._flush_batch(
+                            writer=writer,
+                            batches=pending_batches,
+                            schema=self.data_schema,
+                        )
                         pending_rows = 0
 
                 if pending_batches:
-                    self._flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
+                    self._flush_batch(
+                        writer=writer,
+                        batches=pending_batches,
+                        schema=self.data_schema,
+                    )
 
+            # Writers are now closed (Parquet footer and zstd frames flushed) while tmpdir is still live.
+            # Always upload capture_log so even an all-failed day leaves an audit trail.
             table = pa.Table.from_pydict(capture_log, schema=self.capture_log_schema)
             pq.write_table(table, capture_log_path, compression="zstd")
             self._upload_file(
@@ -595,6 +652,7 @@ class TripUpdatesLoader():
                 )
 
         elapsed = time.monotonic() - start_time
+        # ru_maxrss is reported in bytes on macOS and KiB on Linux/Fargate.
         ru_maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         peak_rss_mb = (
             ru_maxrss / (1024 * 1024) if sys.platform == "darwin" else ru_maxrss / 1024
