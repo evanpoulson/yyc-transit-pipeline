@@ -2,8 +2,13 @@
 
 import io
 import itertools
+import logging
+import os
+import resource
+import sys
 import tarfile
-from collections import deque
+import time
+from collections import Counter, deque
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
@@ -18,6 +23,8 @@ from google.protobuf import message
 from google.transit import gtfs_realtime_pb2
 
 from schemas import SCHEMAS
+
+logger = logging.getLogger(__name__)
 
 class TripUpdatesLoader():
 
@@ -437,25 +444,48 @@ class TripUpdatesLoader():
             Key=key,
             ExtraArgs={"ContentType": content_type},
         )
+        size_mb = os.path.getsize(local_path) / (1024 * 1024)
+        logger.info(
+            "%s: uploaded %.2f MB to s3://%s/%s",
+            self.source_name,
+            size_mb,
+            self.bucket,
+            key,
+        )
 
     def run(self) -> None:
-        """Load one day of raw snapshots into the bronze layer on S3.
+        """Load one day of raw snapshots into the bronze and archive layers on S3.
 
         Lists the target date's raw objects, streams them concurrently through a
-        bounded sliding window, parses each snapshot into a typed Arrow
-        ``RecordBatch``, flushes accumulated batches to a local Parquet file in
-        ``row_group_size`` chunks, and uploads the finished Parquet file to S3.
+        bounded sliding window, archives raw bytes into a daily ``.tar.zst``
+        tarball, parses each snapshot into a typed Arrow ``RecordBatch``,
+        flushes accumulated batches to Parquet in ``row_group_size`` chunks,
+        records per-snapshot outcomes in ``capture_log``, and uploads all
+        produced files to S3.
 
         Raises:
             RuntimeError: If no raw object keys are discovered for the target
                 date.
         """
 
+        start_time = time.monotonic()
+        logger.info(
+            "%s: starting bronze load for %s",
+            self.source_name,
+            self.target_date,
+        )
+
         keys = self._get_raw_paths()
         if not keys:
             raise RuntimeError(
                 f"No raw keys discovered for {self.source_name} on {self.target_date}."
             )
+        logger.info(
+            "%s: discovered %d raw objects for %s",
+            self.source_name,
+            len(keys),
+            self.target_date,
+        )
         
         with TemporaryDirectory() as tmpdir:
             data_path = f"{tmpdir}/data.parquet"
@@ -484,21 +514,31 @@ class TripUpdatesLoader():
                         
                         header_ts, batch = self._parse_snapshot(blob)
                     except botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError:
+                        logger.warning(
+                            "%s: download failed for %s",
+                            self.source_name,
+                            key,
+                            exc_info=True,
+                        )
                         self._append_capture_log(
                             capture_log=capture_log,
                             key=key,
                             status="download_failed",
                         )
-                        #TODO: logger log
                         continue
                     except message.DecodeError:
+                        logger.debug(
+                            "%s: parse failed for %s",
+                            self.source_name,
+                            key,
+                            exc_info=True,
+                        )
                         self._append_capture_log(
                             capture_log=capture_log,
                             key=key,
                             status="parse_failed",
                             byte_size=len(blob),
                         )
-                        #TODO: logger log
                         continue
 
                     self._append_capture_log(
@@ -526,13 +566,19 @@ class TripUpdatesLoader():
             pq.write_table(table, capture_log_path, compression="zstd")
             self._upload_file(
                 local_path=capture_log_path,
-                key=self._build_key(layer="bronze", table="capture_log")
+                key=self._build_key(layer="bronze", table="capture_log"),
             )
 
             if total_rows > 0:
                 self._upload_file(
                     local_path=data_path,
                     key=self._build_key(layer="bronze", table="data"),
+                )
+            else:
+                logger.warning(
+                    "%s: skipping data upload for %s (0 rows decoded)",
+                    self.source_name,
+                    self.target_date,
                 )
 
             if archived_count > 0:
@@ -541,5 +587,31 @@ class TripUpdatesLoader():
                     key=self._build_key(layer="archive"),
                     content_type="application/zstd",
                 )
+            else:
+                logger.warning(
+                    "%s: skipping archive upload for %s (0 objects downloaded)",
+                    self.source_name,
+                    self.target_date,
+                )
 
-        #TODO: log for completeness
+        elapsed = time.monotonic() - start_time
+        ru_maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        peak_rss_mb = (
+            ru_maxrss / (1024 * 1024) if sys.platform == "darwin" else ru_maxrss / 1024
+        )
+        status_counts = Counter(capture_log["status"])
+        logger.info(
+            "%s: finished bronze load for %s in %.2fs "
+            "(discovered=%d, ok=%d, download_failed=%d, parse_failed=%d, "
+            "rows=%d, archived=%d, peak_rss=%.1fMB)",
+            self.source_name,
+            self.target_date,
+            elapsed,
+            len(keys),
+            status_counts["ok"],
+            status_counts["download_failed"],
+            status_counts["parse_failed"],
+            total_rows,
+            archived_count,
+            peak_rss_mb,
+        )
