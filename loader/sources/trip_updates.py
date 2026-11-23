@@ -139,7 +139,7 @@ class TripUpdatesLoader():
 
             yield key, future
 
-    def _new_buffer(self) -> dict[str, list]:
+    def _new_buffer(self, schema: pa.Schema) -> dict[str, list]:
         """Create an empty columnar buffer matching ``data_schema``.
 
         Returns:
@@ -148,7 +148,7 @@ class TripUpdatesLoader():
             ``pyarrow.RecordBatch``.
         """
 
-        buf = {column: [] for column in self.data_schema.names}
+        buf = {column: [] for column in schema.names}
         return buf
 
     def _append_entity(
@@ -302,7 +302,7 @@ class TripUpdatesLoader():
             feed.header.timestamp if feed.header.HasField("timestamp") else None
         )
 
-        buf = self._new_buffer()
+        buf = self._new_buffer(schema=self.data_schema)
         for entity in feed.entity:
             self._append_entity(entity, header_timestamp, buf)
 
@@ -418,12 +418,12 @@ class TripUpdatesLoader():
             archive_path = f"{tmpdir}/raw.tar.zst"
 
             with (
-                pq.ParquetWriter(data_path, self.data_schema) as writer,
-                #TODO: instantiate capture log collector
+                pq.ParquetWriter(data_path, self.data_schema, compression="zstd") as writer,
                 tarfile.open(archive_path, "w:zst") as archive,
             ):
 
                 pending_batches: list[pa.RecordBatch] = []
+                capture_log = self._new_buffer(schema=self.capture_log_schema)
                 pending_rows = 0
                 total_rows = 0
                 for key, future in self._iter_raw_objects(keys=keys, max_in_flight=16):
@@ -457,7 +457,13 @@ class TripUpdatesLoader():
                 if pending_batches:
                     self._flush_batch(writer=writer, batches=pending_batches, schema=self.data_schema)
 
-            #TODO: upload capture log to s3
+            table = pa.Table.from_pydict(capture_log, schema=self.capture_log_schema)
+            pq.write_table(table, capture_log_path, compression="zstd")
+            self._upload_file(
+                local_path=capture_log_path,
+                key=self._build_key(layer="bronze", table="capture_log")
+            )
+
             if total_rows > 0:
                 self._upload_file(
                     local_path=data_path,
