@@ -1,78 +1,56 @@
 """Base loader class that all source-specific bronze loaders subclass."""
 
-import io
 import itertools
 import logging
 import os
-import resource
-import sys
-import tarfile
-import time
 from abc import ABC, abstractmethod
-from collections import Counter, deque
+from collections import deque
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
-from tempfile import TemporaryDirectory
 from typing import Literal
 
 import botocore.client
-import botocore.exceptions
-import pyarrow as pa
-import pyarrow.parquet as pq
-from google.protobuf import message
-from google.transit import gtfs_realtime_pb2
-from schemas import SCHEMAS
-
-logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
 
-class Catcher(ABC):
-    """
+class Loader(ABC):
+    """Abstract base class for all source-specific bronze loaders.
+
+    Provides shared S3 lakehouse I/O primitives—raw object discovery, single
+    and bounded concurrent downloads, ``bronze``/``archive`` key generation,
+    and multipart uploads—while requiring each subclass to declare its source
+    configuration (``source_name``, ``source_path``, ``raw_extension``, and
+    ``max_in_flight``) and implement ``run()``.
     """
 
     @property
     @abstractmethod
     def source_name(self) -> str:
-        """Name of the source this loader targets."""
+        """Name of the source this loader targets, used in S3 keys and logs."""
         ...
 
     @property
     @abstractmethod
     def source_path(self) -> str:
-        """Source path this loader targets."""
+        """S3 prefix where raw objects for this source are stored.
+
+        Must include a trailing slash and no leading slash (for example,
+        ``"raw/trip_updates/"``).
+        """
         ...
 
     @property
     @abstractmethod
     def raw_extension(self) -> str:
-        """File extension source is stored as."""
-        ...
-
-    @property
-    @abstractmethod
-    def data_schema(self) -> pa.Schema:
-        """Data table schema for this loader."""
-        ...
-
-    @property
-    @abstractmethod
-    def capture_log_schema(self) -> pa.Schema:
-        """Capture log schema for this loader."""
-        ...
-
-    @property
-    @abstractmethod
-    def row_group_size(self) -> int:
-        """Row group size for the parquet data table."""
+        """File extension of raw objects, without a leading dot (for example, ``"pb"``)."""
         ...
 
     @property
     @abstractmethod
     def max_in_flight(self) -> int:
-        """Upper bound on concurrent downloads at a time."""
+        """Maximum number of concurrent S3 downloads queued at once (must be ``>= 1``)."""
         ...
 
     def __init__(
@@ -97,7 +75,7 @@ class Catcher(ABC):
         self.target_date = target_date
 
     def _get_raw_paths(self) -> list[str]:
-        """List every raw object key for this feed on the target date.
+        """List every raw object key for this source on the target date.
 
         Lists objects under ``<source_path><YYYY>/<MM>/<DD>/`` and filters to
         keys ending with ``.<raw_extension>`` so directory markers and stray
@@ -258,3 +236,8 @@ class Catcher(ABC):
             self.bucket,
             key,
         )
+
+    @abstractmethod
+    def run(self) -> None:
+        """Load one day of raw objects for this source into the bronze and archive layers."""
+        ...
