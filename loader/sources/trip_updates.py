@@ -535,10 +535,11 @@ class TripUpdatesLoader():
                     key=self._build_key(layer="bronze", table="data"),
                 )
 
-            self._upload_file(
-                local_path=archive_path,
-                key=self._build_key(layer="archive"),
-                content_type="application/zstd",
-            )
+            if archived_count > 0:
+                self._upload_file(
+                    local_path=archive_path,
+                    key=self._build_key(layer="archive"),
+                    content_type="application/zstd",
+                )
 
         #TODO: log for completeness
