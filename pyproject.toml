@@ -17,4 +17,4 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["catcher", "compactor"]
+members = ["catcher"]

@@ -11,7 +11,6 @@ WORKDIR /src
 # but only the catcher's dependencies are installed.
 COPY pyproject.toml uv.lock ./
 COPY catcher/pyproject.toml ./catcher/
-COPY compactor/pyproject.toml ./compactor/
 RUN uv sync --frozen --no-dev --no-cache --package catcher
 
 COPY catcher/ ./catcher/
